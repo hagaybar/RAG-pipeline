@@ -351,7 +351,7 @@ class RAGPipeline:
             raise ValueError("No chunks provided. Ensure retrieve() ran before generate_answer().")
 
         logger.info("Building prompt...")
-        prompt_builder = EmailPromptBuilder()
+        prompt_builder = EmailPromptBuilder(style="references")
         client = APIClient(config=self.config)
         prompt = prompt_builder.build(query, chunks["context"])
 
