@@ -1,0 +1,14 @@
+openai
+pandas
+numpy
+faiss-cpu
+scikit-learn
+sentence-transformers
+spacy
+pywin32
+transformers
+tiktoken
+beautifulsoup4
+lxml
+PyYAML
+colorlog

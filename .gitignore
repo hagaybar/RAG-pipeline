@@ -1,0 +1,104 @@
+# -------------------------
+# Python: compiled/intermediate files
+# -------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# -------------------------
+# Editor/IDE settings
+# -------------------------
+.vscode/
+*.code-workspace
+
+# -------------------------
+# Virtual environment and secrets
+# -------------------------
+.env
+.venv/
+env/
+venv/
+
+# -------------------------
+# Logs and runtime outputs
+# -------------------------
+*.log
+logs/
+data/logs/
+debug/
+outputs/
+api_usage.log
+
+# -------------------------
+# Data: generated during runs
+# -------------------------
+data/cleaned/
+data/chunks/
+data/embeddings/
+data/logs/
+outputs/
+debug/
+*.tsv
+*.csv
+*.index
+
+# -------------------------
+# Large raw data and intermediate outputs
+# -------------------------
+data/raw/
+old_loc_not_mapped/
+
+# -------------------------
+# Temporary / backup / experimental
+# -------------------------
+*.bak
+*.tmp
+*.rar
+*~ 
+
+# -------------------------
+# HTML and JS download artifacts (captured webpages)
+# -------------------------
+scripts/data_processing/html/Opening_files/
+
+# -------------------------
+# Test/Debug artifacts
+# -------------------------
+tests/*
+tests/
+runs/
+runs/*
+Opening.html
+scripts/data_processing/html/Opening.html
+scripts/dev/*
+scripts/dev/
+# -------------------------
+# Optional: ignore task-specific configs
+# -------------------------
+configs/tasks/*.yaml
+
+# -------------------------
+# Optional: ignore generated task configs
+# -------------------------
+task_configs/
+
+# -------------------------
+# Optional: doc working files
+# -------------------------
+docs/*.txt
+docs/*.docx
+docs/chat_*
+
+# -------------------------
+# Optional: Excel data artifacts
+# -------------------------
+*.xlsx
+
+
+# -------------------------
+# force: requirements.txt
+# -------------------------
+
+!requirements.txt
