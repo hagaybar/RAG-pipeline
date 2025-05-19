@@ -17,7 +17,7 @@ def load_pipeline(config_path: str):
 st.title("📬 RAG Email QA Interface (Local Test UI)")
 
 # Config path selector
-config_path = st.text_input("Path to Config File:", value="task_configs/email_test.yaml")
+config_path = st.text_input("Path to Config File:", value="configs/tasks/api_full_180525.yaml")
 pipeline = load_pipeline(config_path)
 
 # Query input
