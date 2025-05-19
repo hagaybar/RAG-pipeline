@@ -37,3 +37,19 @@ class EmailPromptBuilder(PromptBuilder):
 ---
 Question: {query}
 Answer:"""
+    
+    def build_prompt_references(self, query: str, context: str) -> str:
+        instructions = (
+            "You are an AI assistant answering questions based on internal email discussions.\n"
+            "Each chunk of context is labeled with a number like [1], [2], etc.\n"
+            "When answering, cite the relevant chunks using these labels (e.g., [1], [2]).\n"
+            "At the end of your answer, do not include a separate list of sources — it will be added automatically.\n"
+            "If the context lacks an answer, reply with: \"I don't know.\"\n"
+        )
+
+        return f"""{instructions}
+---
+{context}
+---
+Question: {query}
+Answer:"""
