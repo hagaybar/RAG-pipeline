@@ -357,6 +357,11 @@ class RAGPipeline:
 
         logger.info("Sending prompt to OpenAI...")
         answer = client.send_completion_request(prompt)
+
+        # Format citations
+        formatter = CitationFormatter(top_chunks=chunks["top_chunks"])
+        answer = formatter.finalize_answer(answer)
+
         logger.info("Answer received.")
 
         # Save outputs
@@ -394,37 +399,6 @@ class RAGPipeline:
         print("💬 Generated Answer:\n", answer)
         logger.info(f"Answer saved to: {answer_path}")
         logger.info(f"Run metadata saved to: {metadata_path}")
-        return answer
-
-    def generate_answer_temp(self, query: Optional[str] = None, chunks: Optional[dict] = None) -> str:
-        self.logger.info("Generating answer...")
-        self.ensure_config_loaded()
-
-        query = query or self.query
-        if not query:
-            self.logger.error("No query provided. Use get_user_query() before calling generate_answer().")
-            raise ValueError("No query provided. Use get_user_query() before calling generate_answer().")
-
-        chunks = chunks or getattr(self, "last_chunks", None)
-        if not chunks:
-            self.logger.error("No chunks provided. Ensure retrieve() ran before generate_answer().")
-            raise ValueError("No chunks provided. Ensure retrieve() ran before generate_answer().")
-
-        self.logger.info("Building prompt...")
-        prompt_builder = EmailPromptBuilder()
-        client = APIClient(config=self.config)
-        prompt = prompt_builder.build(query, chunks["context"])
-        self.logger.info(f"Prompt being sent:\n{prompt}")
-        # print(f"🧠 Prompt being sent:\n{prompt}")
-        answer = client.send_completion_request(prompt)
-
-        # Format citations
-        formatter = CitationFormatter(top_chunks=chunks["top_chunks"])
-        answer = formatter.finalize_answer(answer)
-
-        self.logger.info(f"Generated answer:\n{answer}")
-
-        # print("💬 Generated Answer:\n", answer)
         return answer
 
     def run_full_pipeline(self, query: str) -> str:
@@ -571,42 +545,6 @@ class RAGPipeline:
             raise ValueError(
                 f"Step '{step_name}' cannot be added — missing required config keys:\n" +
                 "\n".join(f"  - {k}" for k in missing_keys)
-            )
-
-        self.steps.append((step_name, kwargs))
-        print(f"✅ Step '{step_name}' added{' (force override)' if force else ''}.")
-
-    def add_step_temp(self, step_name: str, force: bool = False, **kwargs):
-        """
-        Add a pipeline step by name, along with optional parameters.
-
-        Args:
-            step_name (str): Name of the pipeline step to add.
-            force (bool): If True, bypasses dependency checks. Use with caution.
-            **kwargs: Optional arguments to pass to the step during execution.
-
-        Raises:
-            AttributeError: If the step is not a method of RAGPipeline.
-            ValueError: If dependencies are not met and force=False.
-        """
-        if not hasattr(self, step_name):
-            raise AttributeError(f"Step '{step_name}' is not a method of RAGPipeline.")
-
-        if step_name not in self.STEP_DEPENDENCIES:
-            raise ValueError(f"Step '{step_name}' is not a recognized pipeline step.")
-
-        added_steps = [s for s, _ in self.steps]
-
-        # Check for missing dependencies
-        missing_dependencies = [
-            dep for dep in self.STEP_DEPENDENCIES[step_name]
-            if dep not in added_steps
-        ]
-
-        if missing_dependencies and not force:
-            raise ValueError(
-                f"Cannot add step '{step_name}' — missing prerequisite(s): {missing_dependencies}.\n"
-                f"You can override this check with force=True if you are sure these steps were already completed."
             )
 
         self.steps.append((step_name, kwargs))
