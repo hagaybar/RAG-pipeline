@@ -55,7 +55,15 @@ with tabs[0]:
         config_text = load_config(config_path)
 
         cols = st.columns(4)
-        cols[0].button("View")
+        if cols[0].button("View"):
+            try:
+                with open(f"configs/tasks/{os.path.basename(selected_config)}", "r", encoding="utf-8") as f:
+                    new_text = f.read()
+                st.session_state.edited_config_text = new_text
+                st.session_state.edit_mode = False
+                st.success("🔄 Config reloaded from file.")
+            except Exception as e:
+                st.error(f"❌ Failed to reload config: {e}")
         if cols[1].button("Edit"):
             st.session_state.edit_mode_toggle = True
         cols[2].button("Duplicate")
