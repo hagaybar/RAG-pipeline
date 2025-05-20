@@ -1,6 +1,7 @@
 import streamlit as st
 import glob
 import yaml
+import os
 
 st.set_page_config(page_title="RAG Pipeline UI", layout="wide")
 st.title("📬 RAG Pipeline Control Panel")
@@ -50,7 +51,7 @@ with tabs[0]:
         selected_config = st.selectbox("Available Configs:", config_list)
 
         # Load the selected config file
-        config_path = f"configs/tasks/{selected_config}"
+        config_path = os.path.join("configs", "tasks", os.path.basename(selected_config))
         config_text = load_config(config_path)
 
         cols = st.columns(4)
