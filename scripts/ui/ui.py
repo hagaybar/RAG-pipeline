@@ -1,5 +1,6 @@
 # ui.py
 # Add project root to sys.path
+# some test for git update
 import sys
 import os
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
