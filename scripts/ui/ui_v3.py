@@ -65,9 +65,39 @@ with tabs[0]:
         st.text_input("New Task Name")
         st.button("Create from Template")
 
+    # 🧩 Feature 2: Safe Edit Mode for YAML config
     with st.expander("📑 Preview Task YAML"):
-        st.radio("Mode:", ["Read-only", "Edit mode"], horizontal=True, key="preview_mode")
-        st.text_area("Config Content", value=config_text, height=300, disabled=True)
+        # Use session state to remember edit mode + content
+        if "edit_mode" not in st.session_state:
+            st.session_state.edit_mode = False
+        if "edited_config_text" not in st.session_state:
+            st.session_state.edited_config_text = config_text
+
+        # Toggle edit mode if Edit button clicked
+        if st.session_state.get("edit_mode_toggle", False):
+            st.session_state.edit_mode = True
+            st.session_state.edited_config_text = config_text
+            st.session_state.edit_mode_toggle = False
+
+        mode = "Edit mode" if st.session_state.edit_mode else "Read-only"
+        st.radio("Mode:", ["Read-only", "Edit mode"], index=(1 if st.session_state.edit_mode else 0), key="preview_mode", disabled=True)
+
+        if st.session_state.edit_mode:
+            # Editable text box
+            st.session_state.edited_config_text = st.text_area("Edit Config", value=st.session_state.edited_config_text, height=300, key="config_editor")
+
+            if st.button("💾 Save Changes"):
+                try:
+                    with open(config_path, "w", encoding="utf-8") as f:
+                        f.write(st.session_state.edited_config_text)
+                    st.success("✅ Config saved successfully.")
+                    st.session_state.edit_mode = False
+                except Exception as e:
+                    st.error(f"❌ Failed to save config: {e}")
+        else:
+            # Read-only preview
+            st.text_area("Config Content", value=config_text, height=300, disabled=True)
+
 
 
 
