@@ -56,7 +56,8 @@ with tabs[0]:
 
         cols = st.columns(4)
         cols[0].button("View")
-        cols[1].button("Edit")
+        if cols[1].button("Edit"):
+            st.session_state.edit_mode_toggle = True
         cols[2].button("Duplicate")
         cols[3].button("Delete")
 
@@ -97,11 +98,6 @@ with tabs[0]:
         else:
             # Read-only preview
             st.text_area("Config Content", value=config_text, height=300, disabled=True)
-
-
-
-
-
 
 
 # ----------------------
