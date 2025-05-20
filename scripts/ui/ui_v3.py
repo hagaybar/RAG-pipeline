@@ -57,15 +57,19 @@ with tabs[0]:
         cols = st.columns(4)
         if cols[0].button("View"):
             try:
-                with open(f"configs/tasks/{os.path.basename(selected_config)}", "r", encoding="utf-8") as f:
+                with open(config_path, "r", encoding="utf-8") as f:
                     new_text = f.read()
                 st.session_state.edited_config_text = new_text
                 st.session_state.edit_mode = False
+                st.session_state.open_preview_yaml = True
                 st.success("🔄 Config reloaded from file.")
             except Exception as e:
                 st.error(f"❌ Failed to reload config: {e}")
+
         if cols[1].button("Edit"):
             st.session_state.edit_mode_toggle = True
+            st.session_state.open_preview_yaml = True
+
         cols[2].button("Duplicate")
         cols[3].button("Delete")
 
@@ -75,7 +79,7 @@ with tabs[0]:
         st.button("Create from Template")
 
     # 🧩 Feature 2: Safe Edit Mode for YAML config
-    with st.expander("📑 Preview Task YAML"):
+    with st.expander("📑 Preview Task YAML", expanded=st.session_state.get("open_preview_yaml", False)):
         # Use session state to remember edit mode + content
         if "edit_mode" not in st.session_state:
             st.session_state.edit_mode = False
@@ -106,6 +110,8 @@ with tabs[0]:
         else:
             # Read-only preview
             st.text_area("Config Content", value=config_text, height=300, disabled=True)
+        # Reset flag after use so it doesn't persist across reruns
+        st.session_state.open_preview_yaml = False
 
 
 # ----------------------
