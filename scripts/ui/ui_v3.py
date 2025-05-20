@@ -17,7 +17,7 @@ with tabs[0]:
     # 🧩 Feature 1: Load and display available task configs from disk
 
     with st.expander("🔽 Select Task Config", expanded=True):
-        def list_config_files(config_dir: str = "task_configs") -> list:
+        def list_config_files(config_dir: str = "configs/tasks") -> list:
             """
             Scan the task_configs directory for .yaml files.
 
@@ -50,7 +50,7 @@ with tabs[0]:
         selected_config = st.selectbox("Available Configs:", config_list)
 
         # Load the selected config file
-        config_path = f"task_configs/{selected_config}"
+        config_path = f"configs/tasks/{selected_config}"
         config_text = load_config(config_path)
 
         cols = st.columns(4)
