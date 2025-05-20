@@ -84,7 +84,7 @@ Or supply it directly when creating the `APIClient`.
 
 ## 📄 License
 
-MIT License (or your preferred license here)
+[MIT License](https://opensource.org/license/mit)
 
 ---
 
