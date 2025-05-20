@@ -1,3 +1,8 @@
+"""
+This module defines a client for interacting with OpenAI's APIs, including
+models for text completion and generating embeddings. It features capabilities
+for estimating API call costs, managing a budget, and logging API usage.
+"""
 import os
 import logging
 import tiktoken

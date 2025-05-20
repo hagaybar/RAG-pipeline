@@ -1,3 +1,8 @@
+"""
+This module sends a hardcoded MARC XML string to a Google Generative AI
+model (Gemini) for analysis based on a specific prompt and prints the response.
+Used primarily for testing or demonstration with a fixed XML input.
+"""
 import google.generativeai as genai
 import os
 import time

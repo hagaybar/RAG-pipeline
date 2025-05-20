@@ -1,3 +1,7 @@
+"""
+This module reads MARC XML files, sends their content to a Google Generative AI
+model (Gemini) for analysis based on a specific prompt, and saves the resulting chat.
+"""
 import pathlib
 from pathlib import Path
 import google.generativeai as genai

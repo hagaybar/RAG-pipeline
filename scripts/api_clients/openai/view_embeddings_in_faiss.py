@@ -1,3 +1,9 @@
+"""
+This script provides a utility to load and inspect a FAISS index file.
+It reads the index, retrieves all stored embedding vectors, and displays
+the total count and a preview of the first few embeddings. Useful for
+debugging or verifying the content of a FAISS index.
+"""
 import faiss
 import numpy as np
 
