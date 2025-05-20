@@ -1,3 +1,9 @@
+"""
+This module provides the TextChunker class, which is responsible for splitting
+text into meaningful chunks. It employs a combination of syntactic strategies,
+such as sentence boundary detection, and semantic strategies, like analyzing
+embedding similarity, to achieve coherent chunking.
+"""
 import re
 import spacy
 from typing import List, Tuple

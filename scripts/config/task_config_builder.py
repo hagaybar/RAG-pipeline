@@ -1,3 +1,10 @@
+"""
+This module contains the `TaskConfigBuilder` class, which provides an
+interactive command-line interface (CLI) for generating task-specific YAML
+configuration files for the RAG pipeline. It prompts the user for settings
+related to embedding, chunking, Outlook email fetching, retrieval, and
+answer generation.
+"""
 # scripts/config/task_config_builder.py
 
 import yaml

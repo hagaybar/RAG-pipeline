@@ -1,3 +1,10 @@
+"""
+This module contains the `DataProcessor` class, a tool for handling the
+extraction and processing of data from HTML files. It can read HTML,
+parse various elements (tables, lists, text content), extract text and
+associated metadata (attributes, nesting), clean the text, and structure
+the output into Pandas DataFrames, which can then be saved to CSV or Excel.
+"""
 import os
 import re
 from typing import Callable, List, Optional, Union

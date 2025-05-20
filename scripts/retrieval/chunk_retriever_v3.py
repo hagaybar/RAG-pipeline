@@ -1,3 +1,10 @@
+"""
+This module defines the ChunkRetriever class for searching and retrieving
+relevant text chunks from a FAISS index. It supports querying by text (which
+it embeds) or by a pre-computed vector, filtering by metadata (e.g., date
+ranges), and formats the output for use in Retrieval-Augmented Generation
+(RAG) systems.
+"""
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 import pandas as pd

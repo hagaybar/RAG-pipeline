@@ -1,3 +1,9 @@
+"""
+This module contains the `ConfigLoader` class, designed for loading and
+accessing configurations from YAML files. It allows retrieval of nested
+parameters using dot notation (e.g., 'parent.child.key') and performs
+basic validation such as ensuring the configuration file exists and is not empty.
+"""
 import os
 import yaml
 from typing import Any

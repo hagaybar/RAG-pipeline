@@ -1,3 +1,10 @@
+"""
+This module defines the `EmailFetcher` class, used for retrieving emails
+from Microsoft Outlook. It connects to a specified account, navigates to a
+target folder, fetches emails within a defined number of past days,
+and can save them as a TSV or return a DataFrame. Includes basic email body
+cleaning functionality.
+"""
 import os
 import win32com.client as win32
 import pandas as pd

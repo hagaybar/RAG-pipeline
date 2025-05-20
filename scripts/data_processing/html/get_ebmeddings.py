@@ -1,10 +1,11 @@
 
 #!/usr/bin/env python3
 """
-HTML Embedding Processor
-
-A class-based solution for processing HTML files, extracting data,
-generating embeddings, and exporting results.
+This module features the `HTMLEmbeddingProcessor` class, which manages the
+workflow of processing HTML files to generate text embeddings. It utilizes a
+`DataProcessor` for HTML parsing and data extraction, an `APIClient` for
+creating embeddings from the text, and exports the combined data and
+embeddings to an Excel file.
 """
 
 import os

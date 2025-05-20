@@ -1,3 +1,9 @@
+"""
+This module offers the `TextCleaner` class, a collection of static methods
+designed for cleaning text data within Pandas DataFrames. It supports various
+operations such as URL removal, whitespace normalization, case conversion,
+and bullet point standardization, which can be applied based on content type.
+"""
 import pandas as pd
 from typing import Callable, List
 
