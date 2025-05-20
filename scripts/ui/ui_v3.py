@@ -65,12 +65,13 @@ with tabs[0]:
         st.button("Create from Template")
 
     with st.expander("📑 Preview Task YAML"):
-        st.radio("Mode:", ["Read-only", "Edit mode"], horizontal=True)
-        st.text_area("Config Content", """task_name: email_test
-embedding:
-  mode: local
-  model_name: sentence-transformers/all-MiniLM-L6-v2
-...""", height=250)
+        st.radio("Mode:", ["Read-only", "Edit mode"], horizontal=True, key="preview_mode")
+        st.text_area("Config Content", value=config_text, height=300, disabled=True)
+
+
+
+
+
 
 # ----------------------
 # Tab 2: Runs & Logs
