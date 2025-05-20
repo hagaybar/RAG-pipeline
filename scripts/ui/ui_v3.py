@@ -54,6 +54,7 @@ with tabs[0]:
         config_path = os.path.join("configs", "tasks", os.path.basename(selected_config))
         config_text = load_config(config_path)
 
+        # Display the loaded config content
         cols = st.columns(4)
         if cols[0].button("View"):
             try:
@@ -65,13 +66,40 @@ with tabs[0]:
                 st.success("🔄 Config reloaded from file.")
             except Exception as e:
                 st.error(f"❌ Failed to reload config: {e}")
-
+        # Edit
         if cols[1].button("Edit"):
             st.session_state.edit_mode_toggle = True
             st.session_state.open_preview_yaml = True
+        
+        # Duplicate
+        with cols[2]:
+            if st.button("Duplicate"):
+                st.session_state.dup_mode = True
+                st.session_state.open_dup_box = True
 
-        cols[2].button("Duplicate")
-        cols[3].button("Delete")
+            if st.session_state.get("open_dup_box", False):
+                new_name = st.text_input("New file name (without .yaml)", key="new_dup_name")
+                if st.button("Confirm Duplicate", key="confirm_dup"):
+                    new_file = f"configs/tasks/{new_name}.yaml"
+                    if os.path.exists(new_file):
+                        st.error("⚠️ File already exists.")
+                    else:
+                        try:
+                            with open(config_path, "r", encoding="utf-8") as src, open(new_file, "w", encoding="utf-8") as dst:
+                                dst.write(src.read())
+                            st.success(f"✅ Duplicated to {new_file}")
+                            st.session_state.open_dup_box = False
+                        except Exception as e:
+                            st.error(f"❌ Duplication failed: {e}")
+
+        # Delete
+        with cols[3]:
+            if st.button("Delete"):
+                try:
+                    os.remove(config_path)
+                    st.success(f"🗑️ Deleted {selected_config}")
+                except Exception as e:
+                    st.error(f"❌ Deletion failed: {e}")
 
 
     with st.expander("➕ Create New Task"):
