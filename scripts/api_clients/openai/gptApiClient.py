@@ -1,3 +1,8 @@
+"""
+This module defines a client for interacting with OpenAI's APIs, including
+models for text completion and generating embeddings. It features capabilities
+for estimating API call costs, managing a budget, and logging API usage.
+"""
 import os
 import logging
 import tiktoken
@@ -5,7 +10,48 @@ from typing import List, Optional
 from openai import OpenAI
 
 class APIClient:
-    """Handles API requests, cost estimation, and budget tracking."""
+    """
+    Client for interacting with OpenAI APIs, providing functionalities for text
+    completion (chat models) and embedding generation, along with features for
+    cost estimation, budget tracking, and conditional API calls.
+
+    This class handles sending requests to OpenAI's chat completion (e.g., GPT
+    models) and embedding endpoints. It incorporates robust mechanisms for
+    managing API expenses:
+    - `calculate_cost`: Estimates API call costs based on token usage and
+      model-specific pricing stored in the `MODEL_COSTS` class attribute.
+    - `update_budget` & `get_available_budget`: Tracks cumulative spending against a
+      predefined `budget_limit`.
+    - `should_proceed`: Conditionally allows API calls, potentially prompting for
+      user confirmation if an estimated cost is significant relative to the
+      available budget, or blocking calls that exceed budget thresholds.
+    - `log_usage`: Logs details of each API call (model, tokens, cost) to a
+      specified log file.
+
+    The client is initialized with an OpenAI API key (can be sourced from an
+    environment variable), a `budget_limit` (float), and an optional `config`
+    dictionary which can provide parameters like `embedding_dim`. It offers
+    `send_completion_request` for chat completions and `get_embedding` for
+    single text embeddings. An `embed` method is also provided for batch
+    embedding of multiple texts, making it compatible with tools like
+    `GeneralPurposeEmbedder`.
+
+    Key Attributes:
+        api_key (str): The OpenAI API key used for authentication.
+        budget_limit (float): The maximum spending allowed for this client instance.
+        spent (float): The cumulative amount spent through API calls.
+        logger (logging.Logger): Logger instance for recording API usage and client activity.
+        MODEL_COSTS (dict): Class attribute defining pricing per 1M tokens for various models.
+        embedding_dim (int): Dimension for embeddings, typically derived from `config`.
+
+    Key Methods:
+        send_completion_request: Sends a request for text completion to a chat model.
+        get_embedding: Retrieves an embedding for a single text.
+        embed: Retrieves embeddings for a list of texts.
+        calculate_cost: Estimates the cost of an API call.
+        count_tokens: Counts tokens in a text for a given model.
+        should_proceed: Determines if an API call should proceed based on budget.
+    """
 
     MODEL_COSTS = {
             # all price values USD per 1M tokens
@@ -55,7 +101,17 @@ class APIClient:
             self.logger.info(f"APIClient initialized with budget limit: ${self.budget_limit:.2f}")
  
     def count_tokens(self, text: str, model: str) -> int:
-        """Counts tokens in text using tiktoken."""
+        """
+        Counts tokens in text using tiktoken for the specified model.
+        Falls back to a simple word count if the model is not recognized by tiktoken.
+
+        Args:
+            text (str): The input text.
+            model (str): The model name for which to count tokens.
+
+        Returns:
+            int: The number of tokens.
+        """
         try:
             encoding = tiktoken.encoding_for_model(model)
             self.logger.debug(f"for model {model}: encoding = {encoding} ; length = {len(encoding.encode(text))}")
@@ -64,7 +120,22 @@ class APIClient:
             return len(text.split())  # Approximate fallback for unknown models.
 
     def calculate_cost(self, model: str, input_tokens: int, output_tokens: int, batch: bool = False) -> float:
-        """Calculates API request cost based on token usage and model pricing."""
+        """
+        Calculates API request cost based on token usage and model pricing defined in `MODEL_COSTS`.
+        Applies a 50% discount if `batch` is True.
+
+        Args:
+            model (str): The model name.
+            input_tokens (int): Number of input tokens.
+            output_tokens (int): Number of output tokens.
+            batch (bool, optional): Whether this is a batch request (defaults to False).
+
+        Returns:
+            float: The calculated cost in USD.
+
+        Raises:
+            ValueError: If the `model` is not found in `MODEL_COSTS`.
+        """
         if model not in self.MODEL_COSTS:
             raise ValueError(f"Unknown model: {model}")
 

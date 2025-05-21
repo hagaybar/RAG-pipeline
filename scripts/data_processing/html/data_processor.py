@@ -1,3 +1,10 @@
+"""
+This module contains the `DataProcessor` class, a tool for handling the
+extraction and processing of data from HTML files. It can read HTML,
+parse various elements (tables, lists, text content), extract text and
+associated metadata (attributes, nesting), clean the text, and structure
+the output into Pandas DataFrames, which can then be saved to CSV or Excel.
+"""
 import os
 import re
 from typing import Callable, List, Optional, Union
@@ -5,7 +12,37 @@ from bs4 import BeautifulSoup
 import pandas as pd
 
 class DataProcessor:
-    """A class for handling file operations and text processing for the RAG system."""
+    """
+    Handles the extraction, parsing, and processing of data from HTML files,
+    converting it into structured Pandas DataFrames.
+
+    This class provides a suite of tools for working with HTML content:
+    - **File Reading**: Reads HTML content from files using the `read_file`
+      method, handling specified encodings.
+    - **HTML Parsing**: Utilizes BeautifulSoup for robust HTML parsing.
+        - `parse_html_elements_to_dataframe`: Allows flexible extraction of
+          text and metadata (HTML tag type, attributes, nesting level) from a
+          user-specified list of HTML tags (or a default set including tables,
+          lists, paragraphs, headers, divs).
+        - `parse_html_to_dataframe`: Specifically designed to parse HTML tables
+          and extract their row/cell data into a structured DataFrame.
+    - **Text Cleaning**: Offers a `clean_text` method for basic normalization
+      of extracted text, such as removing excess whitespace and newline characters.
+    - **Metadata Extraction**: The `extract_metadata` method can pull out structural
+      information like table and list indices and item counts. The more general
+      `parse_html_elements_to_dataframe` also captures tag-specific attributes
+      and nesting levels.
+    - **DataFrame Conversion**: Organizes the extracted, cleaned, and metadata-enriched
+      data into Pandas DataFrames, making it suitable for analysis or as input
+      for further processing steps like embedding.
+    - **Data Export**: Includes methods like `save_dataframe_to_csv` and
+      `export_df_to_excel` to save the resulting DataFrames to disk.
+
+    The `process_html_file` method serves as a high-level orchestrator, combining
+    file reading, parsing of specified HTML elements (via
+    `parse_html_elements_to_dataframe`), and text cleaning to produce a
+    DataFrame from a single HTML file.
+    """
 
     def __init__(self, encoding: str = "utf-8"):
         """Initialize the DataProcessor with configurable file encoding."""
