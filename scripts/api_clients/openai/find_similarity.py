@@ -1,3 +1,9 @@
+"""
+This module provides functionality to find emails or texts similar to a given
+query. It utilizes a pre-built FAISS index for efficient similarity searching
+and an OpenAI API client to generate embeddings for queries. The results are
+saved to a TSV file.
+"""
 import faiss
 import numpy as np
 import pandas as pd

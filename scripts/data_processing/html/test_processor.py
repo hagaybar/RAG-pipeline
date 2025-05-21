@@ -67,7 +67,16 @@ class MockAPIClient:
 # ======= Test Functions =======
 
 def test_embedding_generation():
-    """Test embedding generation with mock objects."""
+    """
+    Tests the `generate_embeddings` method of `HTMLEmbeddingProcessor` using
+    mock data and API clients to ensure correct behavior and state changes.
+
+    Args:
+        None.
+
+    Returns:
+        bool: True if all checks pass, False otherwise.
+    """
     print("\n=== Testing Embedding Generation ===")
     
     # Create mock objects
@@ -114,7 +123,16 @@ def test_embedding_generation():
     return all(checks)
 
 def test_export_results():
-    """Test exporting results with mock objects."""
+    """
+    Tests the `export_results` method of `HTMLEmbeddingProcessor` using mock
+    objects, verifying both default and custom file exports and logging.
+
+    Args:
+        None.
+
+    Returns:
+        bool: True if all checks pass, False otherwise.
+    """
     print("\n=== Testing Export Results ===")
     
     # Create mock objects
@@ -171,7 +189,17 @@ def test_export_results():
     return all(checks)
 
 def test_full_pipeline():
-    """Test the full pipeline with mock objects."""
+    """
+    Simulates and tests a simplified full pipeline sequence (`process_html_file`
+    (mocked data) -> `generate_embeddings` -> `export_results`) of
+    `HTMLEmbeddingProcessor` using mock components.
+
+    Args:
+        None.
+
+    Returns:
+        bool: True if all checks pass, False otherwise.
+    """
     print("\n=== Testing Full Pipeline ===")
     
     # Create mock objects
@@ -216,7 +244,17 @@ def test_full_pipeline():
     return all(checks)
 
 def test_error_handling():
-    """Test error handling with mock objects that throw exceptions."""
+    """
+    Tests error handling in `HTMLEmbeddingProcessor`, specifically when the API
+    client's `get_embedding` method raises an exception. Ensures embeddings are
+    still attempted for all rows and errors are handled gracefully.
+
+    Args:
+        None.
+
+    Returns:
+        bool: True if all checks pass, False otherwise.
+    """
     print("\n=== Testing Error Handling ===")
     
     class FailingAPIClient(MockAPIClient):
@@ -250,7 +288,16 @@ def test_error_handling():
     return all(checks)
 
 def capture_logs():
-    """Set up log capturing for verification."""
+    """
+    Sets up a temporary logging handler to capture log output into a string
+    buffer, allowing for verification of log messages during tests.
+
+    Args:
+        None.
+
+    Returns:
+        io.StringIO: A string buffer containing captured log messages.
+    """
     log_stream = io.StringIO()
     handler = logging.StreamHandler(log_stream)
     formatter = logging.Formatter('%(levelname)s: %(message)s')
@@ -262,8 +309,19 @@ def capture_logs():
     
     return log_stream
 
-def check_test_result(name, result, expected):
-    """Simple test result checker."""
+def check_test_result(name: str, result: Any, expected: Any) -> bool:
+    """
+    Compares an actual test `result` against an `expected` value and prints
+    a pass/fail message prefixed with the test `name`.
+
+    Args:
+        name (str): The name of the test being checked.
+        result (Any): The actual result obtained from the test.
+        expected (Any): The expected result.
+
+    Returns:
+        bool: True if `result` equals `expected`, False otherwise.
+    """
     if result == expected:
         print(f"✅ {name}: Passed")
         return True
@@ -272,7 +330,17 @@ def check_test_result(name, result, expected):
         return False
 
 def test_initialization():
-    """Test that the processor initializes correctly with mock objects."""
+    """
+    Tests the initialization of `HTMLEmbeddingProcessor`, verifying that
+    configuration parameters (API key, budget, output file) are correctly
+    set and initial state variables are as expected.
+
+    Args:
+        None.
+
+    Returns:
+        bool: True if all checks pass, False otherwise.
+    """
     print("\n=== Testing Initialization ===")
     
     # Create mock objects
@@ -305,7 +373,18 @@ def test_initialization():
     return all(checks)
 
 def test_integration_with_real_processor():
-    """Test HTML file processing with the real DataProcessor implementation."""
+    """
+    Performs an integration test of `HTMLEmbeddingProcessor` using the actual
+    `DataProcessor` for HTML parsing and a mock `APIClient`. Verifies file
+    processing, embedding generation, and result export with a real HTML file
+    (creating a dummy if not found).
+
+    Args:
+        None.
+
+    Returns:
+        bool: True if all checks pass, False otherwise.
+    """
     print("\n=== Testing Integration with Real DataProcessor ===")
     
     # Use your actual DataProcessor
@@ -403,7 +482,17 @@ def test_integration_with_real_processor():
     return all(checks)
 
 def test_html_processing():
-    """Test HTML file processing with mock objects."""
+    """
+    Tests the basic state changes of `HTMLEmbeddingProcessor` after HTML data
+    is loaded (simulated via mock `DataProcessor`), ensuring it's ready for
+    embedding generation.
+
+    Args:
+        None.
+
+    Returns:
+        bool: True if all checks pass, False otherwise.
+    """
     print("\n=== Testing HTML Processing ===")
     
     # Create mock objects
@@ -437,7 +526,18 @@ def test_html_processing():
 
 # Add this test to your run_all_tests function
 def run_all_tests():
-    """Run all tests and report results."""
+    """
+    Executes all defined test functions in the script (e.g.,
+    `test_initialization`, `test_html_processing`, etc.) and prints a summary
+    of their pass/fail status. Intended to be the main entry point for
+    running tests in this script.
+
+    Args:
+        None.
+
+    Returns:
+        bool: True if all tests pass, False if any test fails.
+    """
     print("\n======= TESTING HTML EMBEDDING PROCESSOR =======")
     
     test_results = {

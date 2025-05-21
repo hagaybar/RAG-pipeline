@@ -17,6 +17,31 @@ This project demonstrates a complete RAG workflow using email content as input:
 
 ---
 
+## 🧬 Core Components
+
+The RAG pipeline is orchestrated by the `RAGPipeline` class (`scripts/pipeline/rag_pipeline.py`). It manages the entire workflow, from initial data ingestion to final answer generation. The pipeline is highly modular and configurable via YAML files, allowing users to customize its behavior and components.
+
+Key classes include:
+
+-   **`RAGPipeline` (`scripts/pipeline/rag_pipeline.py`)**: The central orchestrator. It loads the configuration and manages the sequential execution of different stages:
+    -   Data extraction (e.g., fetching emails)
+    -   Text processing and chunking
+    -   Vector embedding generation
+    -   Information retrieval based on user queries
+    -   Prompt construction and answer generation using a language model.
+-   **`EmailFetcher` (`scripts/data_processing/email/email_fetcher.py`)**: Responsible for fetching emails from various sources, with current support focused on Microsoft Outlook.
+-   **`TextChunker` (`scripts/chunking/text_chunker_v2.py`)**: Implements logic to split large texts (like email bodies) into smaller, semantically coherent chunks suitable for embedding and retrieval.
+-   **`GeneralPurposeEmbedder` (`scripts/embedding/general_purpose_embedder.py`)**: Manages the creation of vector embeddings from text chunks. It can be configured to use different embedding models, including local ones or those accessed via APIs.
+-   **`LocalModelEmbedder` (`scripts/embedding/local_model_embedder.py`)**: A specific embedder that utilizes local sentence transformer models to generate embeddings, allowing for offline processing.
+-   **`APIClient` (`scripts/api_clients/openai/gptApiClient.py`)**: Handles communication with external APIs, primarily the OpenAI API. It's used for generating embeddings (if using OpenAI's models) and for the final answer generation step through language models like GPT.
+-   **`ChunkRetriever` (`scripts/retrieval/chunk_retriever_v3.py`)**: Performs similarity searches against a vector store (e.g., FAISS) to find and retrieve the most relevant text chunks based on the user's query.
+-   **`EmailPromptBuilder` (`scripts/prompting/prompt_builder.py`)**: Constructs carefully engineered prompts for the language model. These prompts typically include the user's query and the context provided by the retrieved text chunks to guide the AI in generating relevant and accurate answers.
+-   **`CitationFormatter` (`scripts/formatting/citation_formatter.py`)**: Post-processes the language model's output to include citations, linking the generated answer back to the source email documents.
+
+The pipeline's modular design allows for individual components to be swapped or customized, providing flexibility for different use cases and data sources. Configuration for each step and component is managed through YAML files located in the `configs/` directory.
+
+---
+
 ## 🧱 Project Structure
 
 ```
@@ -25,6 +50,17 @@ data/               # Cleaned emails, chunks, logs, embeddings
 debug/              # Query debug output
 outputs/            # Final generated answers
 scripts/            # Modular pipeline components
+    api_clients/    # Manages communication with external APIs (e.g., OpenAI, Google)
+    chunking/       # Contains logic for splitting text into smaller, manageable chunks
+    config/         # Handles loading, validation, and building of configuration files
+    data_processing/ # Includes modules for cleaning and processing various data types (e.g., emails, HTML)
+    embedding/      # Responsible for generating vector embeddings from text using different models
+    formatting/     # Utilities for formatting text, like citations
+    pipeline/       # Core orchestration logic for the RAG pipeline
+    prompting/      # Utilities for constructing prompts for language models
+    retrieval/      # Handles searching and retrieving relevant chunks based on queries
+    ui/             # User interface components (if applicable)
+    utils/          # Common utility functions used across the project
 tests/              # Test cases and sample inputs
 docs/               # Notes, planning, and requirements
 ```

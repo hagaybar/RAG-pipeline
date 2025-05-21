@@ -1,3 +1,9 @@
+"""
+This module offers data utility functions, primarily focused on deduplicating
+textual data within Pandas DataFrames. It includes tools for generating SHA-256
+text hashes and using these hashes to deduplicate new email DataFrames or
+chunk DataFrames against existing stored datasets.
+"""
 # scripts/utils/data_utils.py
 
 import os

@@ -1,3 +1,8 @@
+"""
+This module provides a client for interacting with OpenAI's batch embedding API.
+It handles preparing input data, submitting batch jobs, polling for job completion,
+and processing the resulting embeddings.
+"""
 import os
 import time
 import json

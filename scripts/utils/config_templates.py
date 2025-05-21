@@ -1,3 +1,10 @@
+"""
+This module supplies the `get_default_config` function, which generates a
+standardized default configuration template (Python dictionary) for RAG
+pipeline tasks. This template provides baseline settings for embedding,
+retrieval, generation, file paths, and Outlook email fetching, serving as an
+initial setup for new task configurations.
+"""
 from pathlib import Path
 
 def get_default_config(task_name: str) -> dict:

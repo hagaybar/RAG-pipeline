@@ -1,3 +1,8 @@
+"""
+This module sends a hardcoded MARC XML string to a Google Generative AI
+model (Gemini) for analysis based on a specific prompt and prints the response.
+Used primarily for testing or demonstration with a fixed XML input.
+"""
 import google.generativeai as genai
 import os
 import time
@@ -10,7 +15,20 @@ if not GOOGLE_API_KEY:
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
-def get_ai_response(prompt):
+def get_ai_response(prompt: str):
+    """
+    Sends a given prompt to the configured Google Gemini AI model and retrieves its text response.
+
+    This function includes a built-in delay (10 seconds) before making the API call
+    to help manage rate limits.
+
+    Args:
+        prompt (str): The prompt string to send to the AI model.
+
+    Returns:
+        str | None: The text response from the AI model. Returns `None` if an API
+                    error occurs, such as quota exhaustion or other general exceptions.
+    """
     print("get_ai_response: Starting")
     try:
         time.sleep(10)  # Add a 10 second delay between API calls

@@ -31,15 +31,79 @@ console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-
+"""
+This module defines the `ContextPreservingProcessor`, an advanced class for
+parsing HTML content, especially from academic library websites. It focuses
+on extracting textual data while maintaining the semantic context between
+content blocks (like sections, headings, lists, tables) and includes
+functionality for deduplication and preparing text for further embedding.
+"""
 
 class ContextPreservingProcessor:
     """
-    Enhanced processor for academic library websites that preserves contextual relationships.
-    Focuses on maintaining semantic connections between related content.
+    An advanced HTML processor designed to extract content from complex web pages,
+    such as those of academic libraries, with a strong emphasis on preserving
+    contextual relationships between text segments.
+
+    The processor works by:
+    1.  Parsing the HTML content using BeautifulSoup after an initial cleanup
+        of script, style, and other non-visible elements.
+    2.  Optionally attempting to identify and remove common boilerplate content
+        (navigation menus, headers, footers) based on predefined HTML tags
+        (e.g., `nav_elements`), class names (`nav_classes`), ID patterns (`nav_ids`),
+        and text content patterns (`nav_patterns`). (Note: The primary boilerplate
+        removal method `_remove_navigation_elements` is complex and its usage might
+        be selective based on specific site structures).
+    3.  Systematically processing different types of content blocks to extract
+        text while retaining context:
+        -   **Semantic Sections**: Extracts text from within `<main>`, `<article>`,
+            and `<section>` tags, associating content with its nearest heading.
+        -   **Heading-Based Blocks**: Groups content found under specific headings
+            (`<h1>` through `<h6>`), capturing text that follows a heading until
+            a new heading of the same or higher level is encountered.
+        -   **Contextual Lists**: Processes items within `<ul>` and `<ol>` lists,
+            attempting to determine their surrounding context (e.g., a preceding
+            heading via `_find_element_context`).
+        -   **Tables**: Extracts textual data from `<table>` elements, row by row,
+            and attempts to associate it with a nearby heading.
+        -   **Standalone Paragraphs**: Captures relevant `<p>` elements that are not
+            part of the above structures, also attempting to find their context.
+    4.  **Deduplication**: Applies a two-pass deduplication strategy (`_deduplicate_content`)
+        to the extracted content blocks:
+        -   First, it removes exact duplicates based on MD5 hashes of the normalized text,
+            prioritizing blocks with higher 'importance' scores.
+        -   Second, it removes blocks whose text is substantially contained within
+            longer, already processed blocks from the same source page to reduce redundancy.
+    5.  **Embedding Preparation**: Formats the cleaned, contextualized content blocks
+        into a Pandas DataFrame using `prepare_for_embeddings`. This method creates a
+        specific text representation for each block (including source page, content type,
+        heading, and text) that is suitable for input into an embedding model (via an
+        initialized `APIClient`).
+
+    It is initialized with lists of common navigation-related HTML patterns and
+    instantiates an `APIClient` for potential subsequent embedding tasks. The primary
+    aim is to produce a structured, context-rich, and non-redundant dataset from
+    web pages for further AI processing, such as Retrieval Augmented Generation.
     """
     
     def __init__(self):
+        """
+        Initializes the ContextPreservingProcessor.
+
+        Sets up predefined lists for:
+        - `self.nav_patterns`: Regex patterns for text commonly found in boilerplate
+          (e.g., social media links, copyright, privacy policy, login links).
+        - `self.nav_elements`: HTML tags often used for navigation/boilerplate
+          (e.g., 'nav', 'header', 'footer').
+        - `self.nav_classes`: CSS class names frequently associated with such elements
+          (e.g., 'menu', 'navigation', 'sidebar').
+        - `self.nav_ids`: HTML IDs commonly used for these sections.
+        - `self.heading_tags`: List of HTML heading tags ('h1' through 'h6').
+        - `self.content_tags`: List of common HTML content-bearing tags.
+
+        Also initializes an `APIClient` instance (`self.api_client`) for potential
+        use in subsequent embedding tasks.
+        """
         # Common patterns for navigation/boilerplate content in library websites
         self.nav_patterns = [
             r'facebook', r'twitter', r'instagram', r'youtube',
@@ -472,7 +536,30 @@ class ContextPreservingProcessor:
         return context
 
     
-    def _is_likely_navigation(self, element): # First ensure the element is a Tag; if not, it isn’t navigation. if not isinstance(element, Tag): return False
+    def _is_likely_navigation(self, element: Tag) -> bool:
+        """
+        Determines if a BeautifulSoup HTML element is likely navigation or boilerplate.
+
+        This method checks several characteristics of the element:
+        1.  If the element itself is not a `bs4.Tag` instance, it's not considered navigation.
+        2.  Its tag name is checked against `self.nav_elements` (e.g., 'nav', 'footer').
+        3.  Its 'class' and 'id' attributes are checked against `self.nav_classes` and
+            `self.nav_ids` respectively (e.g., class 'menu', id 'header').
+        4.  The text content of the element is converted to lowercase and checked against
+            `self.nav_patterns` (regex for keywords like 'copyright', 'login'). This
+            check is particularly applied if the text content is short (less than 100
+            characters and multiple keywords are found).
+
+        Args:
+            element (bs4.Tag): The BeautifulSoup HTML element to inspect.
+
+        Returns:
+            bool: True if the element is classified as likely navigation or
+                  boilerplate, False otherwise.
+        """
+        # First ensure the element is a Tag; if not, it isn’t navigation.
+        if not isinstance(element, Tag):
+            return False
 
         # Check classes and IDs for navigation hints
         for attr in ['class', 'id']:

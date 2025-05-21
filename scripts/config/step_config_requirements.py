@@ -1,3 +1,9 @@
+"""
+This module contains the `STEP_REQUIRED_CONFIG` dictionary.
+This dictionary maps RAG pipeline step names to a list of their essential
+configuration keys, used for validating that all necessary configurations
+are present before executing a step.
+"""
 # scripts/config/step_config_requirements.py
 
 # This dictionary maps each step to its required configuration keys.
