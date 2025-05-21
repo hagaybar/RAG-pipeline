@@ -156,25 +156,67 @@ with tabs[0]:
 
 
 # ----------------------
-# Tab 2: Runs & Logs
+# Tab 2: Runs & Logs 📊
 # ----------------------
 with tabs[1]:
+    import glob
+    import json
+
     st.header("Run and Log Inspection")
 
-    st.selectbox("Select Task:", ["email_test", "api_test"])
-    st.selectbox("Run ID:", ["20240514_153055", "20240513_184200"])
+    def list_tasks(base_dir: str = "runs") -> list:
+        """List task directories inside runs/"""
+        return sorted([name for name in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, name))])
 
-    with st.expander("📄 Run Metadata", expanded=False):
-        st.json({"run_id": "20240514_153055", "embedding_model": "text-embedding-3-small"})
+    def list_run_ids(task_name: str) -> list:
+        """List run folders under runs/{task_name}/runs/"""
+        run_dir = os.path.join("runs", task_name, "runs")
+        if not os.path.exists(run_dir):
+            return []
+        return sorted(os.listdir(run_dir), reverse=True)
+
+    def load_json(path: str) -> dict:
+        """Load JSON file if it exists"""
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {"error": f"File not found: {path}"}
+
+    def load_text(path: str) -> str:
+        """Load plain text file if it exists"""
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+        return f"(No content found in {path})"
+
+    # Task selector
+    task_list = list_tasks()
+    selected_task = st.selectbox("Select Task:", task_list)
+
+    # Run ID selector
+    run_ids = list_run_ids(selected_task)
+    selected_run = st.selectbox("Run ID:", run_ids)
+
+    # Define file paths
+    run_base = os.path.join("runs", selected_task, "runs", selected_run)
+    meta_path = os.path.join(run_base, "run_metadata.json")
+    answer_path = os.path.join(run_base, "answer.txt")
+    debug_path = os.path.join(run_base, "query_debug.txt")
+    log_path = os.path.join(run_base, "log.txt")
+
+    # Display content
+    with st.expander("📄 Run Metadata"):
+        st.json(load_json(meta_path))
 
     with st.expander("💬 Answer Output"):
-        st.code("The NERS voting enhancement is currently not available in production...", language="text")
+        st.code(load_text(answer_path), language="text")
 
     with st.expander("📜 Query Debug Log"):
-        st.code("[1] Subject: Re: NERS update\n[2] Subject: New features...", language="text")
+        st.code(load_text(debug_path), language="text")
 
     with st.expander("🪵 Execution Log"):
-        st.code("2024-05-14 15:30:55 | INFO | Embedding complete.", language="text")
+        st.code(load_text(log_path), language="text")
+
 
 # ----------------------
 # Tab 3: Pipeline Actions
