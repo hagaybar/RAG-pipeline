@@ -9,7 +9,21 @@ import yaml
 from typing import Any
 
 class ConfigLoader:
-    """A class to load and access configuration from a YAML file."""
+    """
+    Manages the loading and accessing of configuration settings from YAML files.
+
+    This class is initialized with the path to a YAML configuration file.
+    During initialization, it reads and parses the specified file, storing the
+    configuration data internally. It also performs basic validation, such as
+    ensuring the file exists and is not empty or malformed (i.e., contains
+    valid YAML content).
+
+    The primary way to interact with the loaded configuration is through the `get`
+    method. This method allows retrieval of values using a dot-separated key path
+    (e.g., `config_loader.get("paths.data_dir")`) to access nested parameters.
+    If any part of the specified key path is not found in the configuration,
+    a `KeyError` is raised.
+    """
 
     def __init__(self, config_file: str = "config.yaml") -> None:
         """

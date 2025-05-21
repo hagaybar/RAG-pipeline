@@ -20,8 +20,36 @@ from data_processing.html.data_processor import DataProcessor
 
 class HTMLEmbeddingProcessor:
     """
-    A class that handles the entire workflow of processing HTML files,
-    generating embeddings, and exporting results.
+    Orchestrates the end-to-end process of extracting data from HTML files,
+    generating text embeddings, and exporting the combined results.
+
+    This class manages a pipeline that involves these main steps:
+    1.  **HTML Processing**: It takes an HTML file path as input. Internally, it uses
+        an instance of `DataProcessor` (from `data_processing.html.data_processor`)
+        to parse the HTML, extract relevant text segments (including metadata like
+        tag type, attributes, and nesting level), and structure this data into a
+        Pandas DataFrame.
+    2.  **Embedding Generation**: It then utilizes an `APIClient` instance (typically
+        from `api_clients.openai.gptApiClient`), configured with an API key and
+        budget, to generate vector embeddings for the textual data extracted in the
+        previous step. The `_create_embedding` method is responsible for
+        constructing a context-rich string from each DataFrame row (combining tag
+        info, nesting level, attributes, and text content) to be sent for embedding,
+        optimizing the relevance of the resulting vectors.
+    3.  **Data Augmentation**: The generated embeddings are added as a new column
+        (named 'embedding') to the internal DataFrame.
+    4.  **Result Export**: Finally, the augmented DataFrame, containing the original
+        extracted data alongside its corresponding vector embedding, is exported
+        to an Excel file using the `export_results` method.
+
+    The class maintains internal state, such as the processed `self.dataframe` and
+    boolean flags (`self.processed`, `self.embeddings_generated`) to track the
+    pipeline's progress. It also integrates logging (via `self.logger`) for
+    monitoring its operations and errors. Initialization parameters allow
+    configuration of API key details (`api_key`, `api_key_env_var`), a
+    `budget_limit` for the API client, a default `output_file` name for the
+    Excel export, and the `log_level`. The `process_pipeline` method offers a
+    convenient way to run all these steps sequentially for a given HTML file.
     """
 
     def __init__(
@@ -215,10 +243,22 @@ class HTMLEmbeddingProcessor:
 
     def generate_embeddings(self) -> bool:
         """
-        Generate embeddings for each row in the DataFrame.
-        
+        Generates embeddings for each row in the processed DataFrame (`self.dataframe`).
+
+        It iterates through rows, calls `_create_embedding` for each, and appends
+        the result to an 'embedding' column. Includes progress tracking (logging
+        every 10% completion) and logs final statistics about successful and
+        skipped embeddings.
+
+        Args:
+            None (uses `self.dataframe` which should be populated by `process_html_file`).
+
         Returns:
-            True if embeddings were generated, False otherwise
+            bool: True if the embedding process was initiated and completed (even if
+                  some rows were skipped due to empty text or embedding errors for
+                  those specific rows), False if the initial DataFrame was not
+                  processed (i.e., `self.processed` is False or `self.dataframe`
+                  is None) or if a major exception occurred during the loop.
         """
         if not self.processed or self.dataframe is None:
             self.logger.error("No data to generate embeddings for. Process an HTML file first.")

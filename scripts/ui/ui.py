@@ -1,4 +1,10 @@
 # ui.py
+"""
+This module implements a web-based User Interface (UI) using Streamlit
+for interacting with the RAG email pipeline. It allows users to provide a
+configuration path, submit a query, run the pipeline, and view the
+resulting answer and the source text chunks.
+"""
 # Add project root to sys.path
 # some test for git update
 import sys
@@ -13,6 +19,22 @@ from scripts.pipeline.rag_pipeline import RAGPipeline
 # Initialize or reload pipeline
 @st.cache_resource
 def load_pipeline(config_path: str):
+    """
+    Initializes and returns an instance of RAGPipeline, caching the resource.
+
+    This function is decorated with `@st.cache_resource`. This Streamlit
+    decorator ensures that the `RAGPipeline` is loaded only once for a given
+    `config_path`. Subsequent calls with the same `config_path` will return
+    the cached instance, optimizing resource usage and loading times in the
+    Streamlit application.
+
+    Args:
+        config_path (str): The file path to the YAML configuration file
+                           used to initialize the RAGPipeline.
+
+    Returns:
+        RAGPipeline: An initialized instance of the RAGPipeline.
+    """
     return RAGPipeline(config_path=config_path)
 
 st.title("📬 RAG Email QA Interface (Local Test UI)")

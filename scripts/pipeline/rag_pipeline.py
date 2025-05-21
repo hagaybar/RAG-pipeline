@@ -1,3 +1,11 @@
+"""
+This module defines the `RAGPipeline` class, the central orchestrator for the
+Retrieval Augmented Generation workflow. It manages all key stages, from
+configuration loading, data extraction (e.g., emails) and chunking, to
+embedding generation, context retrieval, and AI-driven answer synthesis.
+The class supports modular execution of pipeline steps, dynamic task
+configuration, and methods for updating existing embeddings.
+"""
 import os
 import json
 from pathlib import Path
@@ -27,6 +35,54 @@ from scripts.formatting.citation_formatter import CitationFormatter
 
 
 class RAGPipeline:
+    """
+    Orchestrates the end-to-end Retrieval Augmented Generation (RAG) workflow.
+
+    This class is the main driver of the RAG pipeline, managing all stages from
+    initial data ingestion and processing to the final generation of answers.
+    It integrates various components to perform tasks such as data fetching,
+    chunking, embedding, retrieval, and answer synthesis.
+
+    Key Responsibilities and Functionalities:
+    - **Initialization**: Can be initialized with a path to a YAML configuration
+      file (`config_path`). Upon initialization with a path, it loads, validates,
+      and applies the configuration, setting up paths and instantiating necessary
+      components like the appropriate embedder based on the config.
+    - **Core RAG Stages**:
+        - `extract_and_chunk()`: Fetches raw data (e.g., emails via `EmailFetcher`),
+          cleans it, and divides it into smaller, manageable text chunks using
+          `TextChunker`.
+        - `embed_chunks()` / `embed_chunks_batch()`: Takes the processed chunks and
+          generates vector embeddings using the configured `GeneralPurposeEmbedder`.
+          Supports both regular and batch embedding modes.
+        - `retrieve()`: Accepts a user query, embeds it using the same embedding
+          client, and then uses `ChunkRetriever` to find and return the most
+          semantically similar chunks from the FAISS index.
+        - `generate_answer()`: Constructs a detailed prompt using `EmailPromptBuilder`
+          (incorporating the user query and retrieved context chunks), sends it to
+          an LLM via `APIClient`, and formats the response using `CitationFormatter`
+          to include source citations.
+    - **Component Integration**: Serves as a central hub that instantiates and
+      coordinates various specialized components, including `ConfigLoader`,
+      `EmailFetcher`, `TextChunker`, `GeneralPurposeEmbedder` (with either
+      `LocalModelEmbedder` or an API-based embedder), `ChunkRetriever`,
+      `EmailPromptBuilder`, `APIClient`, and `CitationFormatter`.
+    - **Configuration Handling**: Manages pipeline configurations through methods
+      like `load_config()`, `validate_config()`, and `configure_task()` (for
+      creating new task configurations dynamically).
+    - **Flexible Pipeline Execution**: Allows for defining a custom sequence of
+      pipeline steps via `add_step()` and executing them using `run_steps()`.
+      The `run_full_pipeline()` method provides a shortcut for a standard end-to-end run.
+    - **State Management**: Maintains critical state information, including the
+      loaded configuration, paths to data files (e.g., `chunked_file`,
+      `index_path`, `metadata_path`), the user's query, and the last retrieved chunks.
+    - **Utility and introspection**: Offers `pipe_review()` to display the current
+      pipeline setup and `describe_steps()` to list available operations.
+    - **Logging**: Employs `LoggerManager` for comprehensive logging of its operations.
+
+    The class defines `STEP_DEPENDENCIES` to manage the valid order of operations
+    when steps are added manually.
+    """
     STEP_DEPENDENCIES = {
     "extract_and_chunk": [],
     "embed_chunks": [],
@@ -38,6 +94,19 @@ class RAGPipeline:
 }
 
     def __init__(self, config_path: Optional[str] = None):
+        """
+        Initializes the RAGPipeline instance.
+
+        Sets up a logger and initializes various internal attributes to their
+        default states (e.g., `config`, `embedder`, `steps`, `query`). If a
+        `config_path` (path to a YAML configuration file) is provided, this
+        method will also call `self.load_config()` to load and apply that
+        configuration immediately.
+
+        Args:
+            config_path (Optional[str], optional): Path to a YAML configuration
+                                                   file. Defaults to None.
+        """
         self.logger = LoggerManager.get_logger("RAGPipeline")
         self.logger.info("Initializing RAGPipeline...")
         self.config_loader = None
@@ -58,6 +127,21 @@ class RAGPipeline:
             self.load_config(config_path)
 
     def load_config(self, path: str = None) -> None:
+        """
+        Loads, validates, and applies a YAML configuration from the given path.
+
+        This method uses `ConfigLoader` to read the YAML file. After loading,
+        it validates the configuration using `self.validate_config()`.
+        It then sets up critical instance attributes based on the loaded config,
+        such as `self.mode` (embedding mode), `self.index_path`, and
+        `self.metadata_path`. Finally, it calls `self._create_embedder()`
+        to instantiate the appropriate embedding client.
+
+        Args:
+            path (str, optional): The file path to the YAML configuration file.
+                                  If None, it uses `self.config_path` (if set
+                                  during initialization). Defaults to None.
+        """
         self.logger.info("Loading configuration...")
         if path is None:
             path = self.config_path
@@ -74,6 +158,22 @@ class RAGPipeline:
         self.embedder = self._create_embedder()
 
     def ensure_config_loaded(self):
+        """
+        Checks if a configuration has been successfully loaded into `self.config`.
+
+        This is a helper method to guard other methods that depend on a loaded
+        configuration.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+
+        Raises:
+            RuntimeError: If `self.config` is None, indicating that no
+                          configuration has been loaded.
+        """
         if not self.config:
             raise RuntimeError("No configuration loaded. Please call load_config(path) first.")
 
@@ -87,6 +187,24 @@ class RAGPipeline:
         self.logger.info(f"User query set: {query}")
 
     def _create_embedder(self):
+        """
+        (Private) Creates and returns a `GeneralPurposeEmbedder` instance.
+
+        The type of embedder (and its underlying client, e.g., local model or API)
+        is determined by the 'embedding' section of the loaded `self.config`.
+        It supports 'local', 'api', and 'batch' modes, instantiating the
+        appropriate clients like `LocalModelEmbedder` or `APIClient`.
+
+        Args:
+            None (relies on `self.config`).
+
+        Returns:
+            GeneralPurposeEmbedder: The configured `GeneralPurposeEmbedder` instance.
+
+        Raises:
+            RuntimeError: If `self.config` has not been loaded.
+            ValueError: If the `embedding.mode` in the config is unsupported.
+        """
         self.logger.info("Creating embedder...")
         if not self.config:
             self.logger.error("Config not loaded. Cannot create embedder.")
@@ -145,6 +263,25 @@ class RAGPipeline:
             raise ValueError(f"Unsupported embedding mode: {mode}")
 
     def extract_and_chunk(self) -> str:
+        """
+        Orchestrates the fetching of emails and their subsequent chunking.
+
+        This method uses `EmailFetcher` to retrieve emails based on the 'outlook'
+        section of the loaded configuration. The fetched email bodies are then
+        processed by `TextChunker`, configured via the 'chunking' section of
+        the config, to produce smaller text segments. The resulting chunked
+        data is saved to a TSV file, the path to which is also determined by
+        the configuration.
+
+        Args:
+            None (relies on `self.config`).
+
+        Returns:
+            str: The file path to the output TSV file containing the chunked text.
+
+        Raises:
+            ValueError: If `EmailFetcher` returns no emails (e.g., empty DataFrame).
+        """
         self.logger.info("Starting email extraction and chunking...")
         self.ensure_config_loaded()
 
@@ -188,6 +325,24 @@ class RAGPipeline:
         return output_file
 
     def embed_chunks(self) -> None:
+        """
+        Embeds text chunks from the file generated by `extract_and_chunk`.
+
+        This method calls the `run` method of the configured `self.embedder`
+        (a `GeneralPurposeEmbedder` instance), passing the path to the
+        `self.chunked_file` (output from `extract_and_chunk`) and the name
+        of the text column to be embedded.
+
+        Args:
+            None (relies on `self.chunked_file` and `self.embedder`).
+
+        Returns:
+            None.
+
+        Raises:
+            RuntimeError: If `self.chunked_file` is not set (i.e., if
+                          `extract_and_chunk` was not run successfully before this).
+        """
         self.ensure_config_loaded()
         self.logger.info("Starting chunk embedding...")
         if not self.chunked_file:
@@ -196,6 +351,24 @@ class RAGPipeline:
         self.embedder.run(self.chunked_file, text_column="Chunk")
 
     def embed_chunks_batch(self) -> None:
+        """
+        Embeds text chunks in batch mode using the configured embedder.
+
+        This method calls the `run_batch` method of `self.embedder`. It requires
+        that `self.chunked_file` has been set by a prior call to
+        `extract_and_chunk` and that the configured embedder supports batch
+        operations.
+
+        Args:
+            None (relies on `self.chunked_file` and `self.embedder`).
+
+        Returns:
+            None.
+
+        Raises:
+            RuntimeError: If `self.chunked_file` is not set, or if the current
+                          embedder (`self.embedder`) does not have a `run_batch` method.
+        """
         self.ensure_config_loaded()
         self.logger.info("Starting batch chunk embedding...")
 
@@ -209,6 +382,26 @@ class RAGPipeline:
         self.embedder.run_batch(self.chunked_file, text_column="Chunk")
 
     def update_embeddings(self) -> None:
+        """
+        Updates existing embeddings with new content.
+
+        The process involves:
+        1. Fetching new emails using `EmailFetcher`.
+        2. Deduplicating these new emails against already processed and cleaned emails.
+        3. Chunking the truly new emails using `TextChunker`.
+        4. Deduplicating these new chunks against existing chunk metadata.
+        5. Embedding only the unique new chunks using `self.embedder.run()`.
+        6. Saving metadata about this update run, including counts and paths.
+
+        This method is designed to incrementally add new information to the
+        embedding store without reprocessing existing data.
+
+        Args:
+            None (relies on `self.config` and existing data files).
+
+        Returns:
+            None.
+        """
         
         from scripts.utils.data_utils import deduplicate_emails, deduplicate_chunks
         from scripts.data_processing.email.email_fetcher import EmailFetcher
@@ -306,6 +499,30 @@ class RAGPipeline:
         logger.info(f"Run metadata saved to: {run_dir}/run_metadata.json")
 
     def retrieve(self, query: Optional[str] = None) -> dict:
+        """
+        Retrieves relevant text chunks for a given query.
+
+        First, the query is embedded using `self.embedder.embed_query()` to get
+        its vector representation. Then, a `ChunkRetriever` instance is used
+        to search the FAISS index (`self.index_path`) and find the `top_k`
+        most similar chunks based on their embeddings and associated metadata
+        (from `self.metadata_path`). The result, including formatted context
+        and detailed chunk information, is stored in `self.last_chunks`.
+
+        Args:
+            query (Optional[str], optional): The user's query string. If None,
+                                             `self.query` (set by `get_user_query`)
+                                             is used. Defaults to None.
+
+        Returns:
+            dict: A dictionary as returned by `ChunkRetriever.retrieve()`,
+                  containing the query, formatted context string, a list of
+                  top chunk details, and the path to a debug file.
+
+        Raises:
+            ValueError: If no query is available (neither passed directly nor
+                        set via `self.query`).
+        """
         self.logger.info("Starting chunk retrieval...")
         self.ensure_config_loaded()
 
@@ -330,6 +547,32 @@ class RAGPipeline:
         return result
 
     def generate_answer(self, query: Optional[str] = None, chunks: Optional[dict] = None, run_id: Optional[str] = None) -> str:
+        """
+        Generates a natural language answer based on a query and retrieved chunks.
+
+        This method constructs a prompt using `EmailPromptBuilder` with the given
+        query and context from `chunks`. It then sends this prompt to a language
+        model via `APIClient` to get a raw answer. Finally, `CitationFormatter`
+        is used to process this raw answer, renumbering citations and appending
+        a formatted list of sources. The final answer, debug information, and
+        run metadata are saved to a run-specific directory.
+
+        Args:
+            query (Optional[str], optional): The user's query. If None,
+                                             `self.query` is used. Defaults to None.
+            chunks (Optional[dict], optional): The dictionary of retrieved chunks
+                                               (output from `self.retrieve`). If None,
+                                               `self.last_chunks` is used. Defaults to None.
+            run_id (Optional[str], optional): An optional identifier for this specific
+                                              generation run. If None, a new ID is
+                                              generated. Defaults to None.
+
+        Returns:
+            str: The generated and formatted answer string.
+
+        Raises:
+            ValueError: If no query or no chunks are available.
+        """
         self.ensure_config_loaded()
         task_name = self.config.get("task_name", "unnamed_task")
         run_id = run_id or generate_run_id()
@@ -402,6 +645,24 @@ class RAGPipeline:
         return answer
 
     def run_full_pipeline(self, query: str) -> str:
+        """
+        Executes a predefined sequence of core pipeline steps for a given query.
+
+        The sequence is:
+        1. `self.extract_and_chunk()`
+        2. `self.embed_chunks()`
+        3. `self.retrieve(query)`
+        4. `self.generate_answer(query, chunks)`
+
+        This method provides a convenient way to run the most common end-to-end
+        RAG workflow.
+
+        Args:
+            query (str): The user's query string.
+
+        Returns:
+            str: The final generated and formatted answer from the pipeline.
+        """
         self.ensure_config_loaded()
         self.extract_and_chunk()
         self.embed_chunks()
@@ -466,6 +727,25 @@ class RAGPipeline:
         return save_path
         
     def validate_config(self):
+        """
+        Validates the loaded `self.config` against a predefined set of required
+        keys and their expected data types.
+
+        This method checks for the presence and correct type of essential
+        configuration parameters needed for the pipeline to operate correctly.
+        It iterates through a list of required key paths (e.g., "embedding.model_name")
+        and their expected types (e.g., `str`).
+
+        Args:
+            None (operates on `self.config`).
+
+        Returns:
+            None.
+
+        Raises:
+            KeyError: If a required configuration key is missing from `self.config`.
+            TypeError: If a configuration key has a value of an incorrect data type.
+        """
         required = [
             ("embedding", dict),
             ("embedding.model_name", str),

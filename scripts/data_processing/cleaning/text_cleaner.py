@@ -8,7 +8,28 @@ import pandas as pd
 from typing import Callable, List
 
 class TextCleaner:
-    """Handles text cleaning operations on a DataFrame."""
+    """
+    Provides a collection of static methods for cleaning textual data,
+    typically within Pandas DataFrames.
+
+    This class serves as a namespace for text cleaning utilities. It is not
+    intended to be instantiated; its methods are static and can be called
+    directly (e.g., `TextCleaner.remove_urls(...)`).
+
+    The primary method, `clean_dataframe`, iterates through a list of provided
+    cleaning functions, applying them to a specified column (usually 'content')
+    in a DataFrame. Individual static methods address specific cleaning tasks:
+    - `remove_urls`: Strips URLs from text.
+    - `normalize_whitespace`: Consolidates multiple whitespace characters into single spaces.
+    - `lowercase`: Converts text to lowercase.
+    - `standardize_bullets`: Converts common bullet characters (like '-') to a
+      standard symbol (e.g., '•').
+
+    A key feature is that many cleaning functions operate conditionally based on a
+    `content_type` string (passed alongside the text to each cleaning function),
+    allowing for targeted cleaning rules (e.g., only lowercasing 'plain_text'
+    content or standardizing bullets only for 'bullet_list' content type).
+    """
 
     @staticmethod
     def clean_dataframe(df: pd.DataFrame, cleaning_steps: List[Callable[[str], str]]) -> pd.DataFrame:
@@ -33,7 +54,17 @@ class TextCleaner:
 
     @staticmethod
     def remove_urls(text: str, content_type: str) -> str:
-        """Removes URLs from the text."""
+        """
+        Removes URLs (http, https, www) from the text if `content_type` is 'plain_text'.
+        Otherwise, returns the text unchanged.
+
+        Args:
+            text (str): The input string.
+            content_type (str): The type of content; URLs are only removed if this is 'plain_text'.
+
+        Returns:
+            str: The text with URLs removed (if applicable), or the original text.
+        """
         import re
         if content_type == "plain_text":  # Apply only to plain text
             return re.sub(r"http\S+|www\S+", "", text)
@@ -41,7 +72,19 @@ class TextCleaner:
 
     @staticmethod
     def normalize_whitespace(text: str, content_type: str) -> str:
-        """Normalize whitespace in the text."""
+        """
+        Normalizes whitespace in the text by replacing multiple consecutive
+        whitespace characters (spaces, tabs, newlines) with a single space and
+        stripping leading/trailing whitespace. The `content_type` parameter is
+        accepted for consistency but not used in the current logic.
+
+        Args:
+            text (str): The input string.
+            content_type (str): The type of content (currently not used by this function).
+
+        Returns:
+            str: The text with normalized whitespace.
+        """
         return " ".join(text.split())  # Remove excess whitespace in all types
 
     @staticmethod

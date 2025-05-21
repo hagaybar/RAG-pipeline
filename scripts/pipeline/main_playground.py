@@ -1,3 +1,11 @@
+"""
+This module serves as a "playground" or test script for experimenting with
+various components and configurations of the RAG pipeline. It typically
+involves setting up logging, loading specific configurations (often using
+hardcoded paths for convenience during testing), and executing ad-hoc
+pipeline operations or component tests. This script is not part of the
+production pipeline logic and is intended for development and experimentation.
+"""
 from scripts.data_processing.email.config_loader import ConfigLoader
 import os
 import logging

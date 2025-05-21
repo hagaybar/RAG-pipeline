@@ -1,3 +1,9 @@
+"""
+This module provides a centralized and configurable logging system.
+It features `LoggerManager` for creating and managing logger instances with
+various handlers (file, console) and formats (text, colored, JSON), and
+`JsonLogFormatter` for producing structured JSON logs.
+"""
 import os
 import sys
 import logging
@@ -12,6 +18,31 @@ except ImportError:
 
 
 class LoggerManager:
+    """
+    A factory class for creating and managing singleton `logging.Logger` instances.
+
+    This class uses a class method `get_logger` to provide configured logger
+    instances. It ensures that for any unique logger name (optionally appended
+    with a `run_id`), the same logger instance is returned, preventing duplicate
+    handler attachments.
+
+    Key features of the configured loggers:
+    - **Dual Output**: Loggers are set up with handlers for both console (stdout)
+      and file output.
+    - **Customizable Levels & Formatting**: The logging level (e.g., "INFO", "DEBUG")
+      can be specified. Console output can be colored if the `colorlog` package
+      is available. File output can be formatted as plain text or structured JSON
+      (using `JsonLogFormatter`).
+    - **Path Handling**: Log file paths can be specified directly, derived from a
+      `TaskPaths` object (if provided, allowing for task-specific log organization,
+      potentially with `run_id` subdirectories), or fall back to a default
+      directory. The class ensures necessary log directories are created.
+    - **No Duplicate Propagation**: Logger propagation is disabled (`propagate = False`)
+      to avoid messages being handled multiple times by ancestor loggers.
+
+    The `_loggers` class attribute stores references to already created loggers
+    to ensure their singleton nature.
+    """
     _loggers = {}
     _default_log_dir = "logs"
 

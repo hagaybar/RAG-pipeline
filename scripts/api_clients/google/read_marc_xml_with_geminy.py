@@ -18,11 +18,38 @@ genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
 def create_file_name():
+    """
+    Generates a unique filename for saving a chat session, based on the current timestamp.
+
+    Args:
+        None.
+
+    Returns:
+        str: A string formatted as "chat_YY-MM-DD_HH-MM-SS".
+    """
     timestamp = time.strftime("%y-%m-%d_%H-%M-%S")
     file_name = f"chat_{timestamp}"
     return file_name
 
-def show_file(file_data):
+def show_file(file_data: dict):
+    """
+    Reads content from a file specified in `file_data`.
+
+    The file can be specified via a URL, inline data, or a local filename.
+
+    Args:
+        file_data (dict): A dictionary that must contain one of "url",
+                          "inline_data", or "filename" to specify the file
+                          source. It should also include "mime_type".
+
+    Returns:
+        tuple | None: A tuple `(name, file_content)` where `name` is the
+                      source identifier (URL or filename) and `file_content`
+                      is the text content. Returns `None` if reading fails.
+
+    Raises:
+        ValueError: If `file_data` does not contain a valid source specification.
+    """
     print("show_file: Starting")
     mime_type = file_data["mime_type"]
     name = None
@@ -80,7 +107,19 @@ def show_file(file_data):
         print("show_file: Returning None")
         return None
 
-def read_local_file(file_path):
+def read_local_file(file_path: Path):
+    """
+    Orchestrates reading a local XML file, sending its content to the Gemini AI
+    model for analysis based on a predefined user question/prompt, and saving
+    the AI's response.
+
+    Args:
+        file_path (Path): The `pathlib.Path` object representing the local
+                          XML file to be processed.
+
+    Returns:
+        None. (The function prints output and saves files).
+    """
     print(f"read_local_file: Starting with file_path: {file_path}")
     path = Path(file_path)
     if not path.exists():
@@ -148,14 +187,39 @@ def read_local_file(file_path):
         print("read_local_file: Failed to read file")
     print("read_local_file: Returning")
 
-def save_chat_to_file(file_name, chat):
+def save_chat_to_file(file_name: str, chat: str):
+    """
+    Saves the provided chat content to a text file.
+
+    The chat content typically includes the user question, content name/identifier,
+    and the AI's response.
+
+    Args:
+        file_name (str): The base name for the output file (usually timestamped).
+        chat (str): The string content of the chat to be saved.
+
+    Returns:
+        None.
+    """
     print(f"save_chat_to_file: Saving chat to file: {file_name}")
     print(f"save_chat_to_file: Chat content:\n{chat}")
     with open(f"{file_name}.txt", "w", encoding="utf-8") as file:
         file.write(chat)
     print(f"save_chat_to_file: Chat saved to {file_name}.txt")
 
-def get_ai_response(prompt):
+def get_ai_response(prompt: str):
+    """
+    Sends a prompt to the configured Google Gemini AI model and retrieves its response.
+
+    Includes a built-in delay before making the API call.
+
+    Args:
+        prompt (str): The prompt string to send to the AI model.
+
+    Returns:
+        str | None: The text response from the AI model, or `None` if an API
+                    error occurs (e.g., quota exceeded, other exceptions).
+    """
     print("get_ai_response: Starting")
     try:
         time.sleep(10)  # Add a 1 second delay between API calls

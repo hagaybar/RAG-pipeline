@@ -1,5 +1,11 @@
 # scripts/embedding/general_purpose_embedder.py
-
+"""
+This module defines the `GeneralPurposeEmbedder` class, a versatile tool for
+creating vector embeddings from text chunks. It is designed to integrate with
+different embedding clients (local models or APIs), save embeddings to a FAISS
+index, manage associated metadata, prevent duplicate processing, and can
+leverage OpenAI's batch API for large-scale embedding tasks.
+"""
 import os
 import pandas as pd
 import numpy as np
@@ -89,7 +95,25 @@ class GeneralPurposeEmbedder:
             new_df.to_csv(self.metadata_path, sep="\t", index=False)
 
     def run(self, chunked_file_path: str, text_column: str = "Chunk") -> None:
-        """Full embedding workflow: load chunks, embed, update index and metadata."""
+        """
+        Performs the full embedding workflow for a given TSV file of text chunks.
+        This includes: loading the chunks, filtering out any chunks already present
+        in the existing metadata (deduplication), embedding the new unique chunks
+        using the configured client, and then saving these new embeddings to the
+        FAISS index and their metadata to the metadata file.
+
+        Args:
+            chunked_file_path (str): Path to the TSV file containing text chunks.
+            text_column (str, optional): The name of the column in the TSV file
+                                         that contains the text to be embedded.
+                                         Defaults to "Chunk".
+
+        Returns:
+            None.
+
+        Raises:
+            ValueError: If `text_column` is not found in the input file.
+        """
         df = pd.read_csv(chunked_file_path, sep="\t")
         if text_column not in df.columns:
             raise ValueError(f"'{text_column}' column not found in file: {chunked_file_path}")
@@ -111,8 +135,24 @@ class GeneralPurposeEmbedder:
 
     def run_batch(self, chunked_file_path: str, text_column: str = "Chunk") -> None:
             """
-            Full batch embedding workflow using OpenAI's batch API.
-            Loads text chunks, submits batch job, parses results, and saves to FAISS + metadata.
+            Performs a full batch embedding workflow using OpenAI's batch API for a
+            given TSV file of text chunks. This involves: loading chunks, filtering
+            out duplicates based on existing metadata, preparing and submitting a batch
+            embedding job via `BatchEmbedder` for new unique chunks, retrieving the
+            results, and finally saving these new embeddings to the FAISS index and
+            their metadata to the metadata file.
+
+            Args:
+                chunked_file_path (str): Path to the TSV file containing text chunks.
+                text_column (str, optional): The name of the column in the TSV file
+                                             that contains the text to be embedded.
+                                             Defaults to "Chunk".
+
+            Returns:
+                None.
+
+            Raises:
+                ValueError: If `text_column` is not found in the input file.
             """
             df = pd.read_csv(chunked_file_path, sep="\t")
             if text_column not in df.columns:

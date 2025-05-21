@@ -1,3 +1,9 @@
+"""
+This module offers the `format_sources` function, which generates a formatted
+string for a "Sources" section based on a list of retrieved text chunks.
+It processes chunk metadata to display details like sender, date, and subject,
+and includes logic for deduplicating entries by sender and sorting them by date.
+"""
 # scripts/formatting/format_sources.py
 
 from typing import List, Dict

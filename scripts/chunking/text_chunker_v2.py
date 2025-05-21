@@ -15,7 +15,47 @@ import logging
 
 class TextChunker:
     """
-    A class for splitting text into meaningful chunks, utilizing both syntactic and semantic strategies.
+    Splits text into semantically meaningful and appropriately sized chunks.
+
+    This class implements a multi-step chunking strategy to create chunks
+    that are both semantically coherent and suitable for downstream embedding
+    and retrieval tasks. The process involves:
+
+    1.  **Sentence Segmentation**: Utilizes a spaCy language model (specified by
+        `language_model`) to initially break down the input text into
+        individual sentences. This forms the basic syntactic units.
+    2.  **Sentence Embedding**: Generates vector embeddings for each sentence using a
+        sentence-transformer model (specified by `embedding_model`). These
+        embeddings capture the semantic meaning of the sentences.
+    3.  **Semantic Chunking**: Groups consecutive sentences based on the cosine
+        similarity of their embeddings. Sentences with similarity scores above
+        the `similarity_threshold` are merged into initial semantic chunks.
+    4.  **Size Enforcement**:
+        -   **Max Size**: Ensures that no chunk exceeds `max_chunk_size` (in tokens).
+            If a semantic chunk is too large, it is further divided, maintaining
+            an `overlap` between the new sub-chunks to preserve context.
+        -   **Min Size**: Merges chunks that are shorter than `min_chunk_size`
+            (character length) with adjacent chunks to avoid overly fragmented text,
+            enhancing contextual integrity.
+
+    The overall aim is to produce text segments that are rich in semantic meaning
+    while adhering to size constraints optimal for language model processing and
+    effective information retrieval.
+
+    Key Initialization Parameters:
+        language_model (str): The spaCy language model identifier used for sentence
+                              segmentation (e.g., "en_core_web_sm").
+        embedding_model (str): The sentence-transformers model identifier used for
+                               generating sentence embeddings (e.g.,
+                               "sentence-transformers/all-MiniLM-L6-v2").
+        max_chunk_size (int): The maximum number of tokens allowed in a single chunk.
+        overlap (int): The number of tokens to overlap between chunks when a larger
+                       chunk is split due to exceeding `max_chunk_size`.
+        similarity_threshold (float): The cosine similarity score (0.0 to 1.0) above
+                                      which consecutive sentences will be grouped
+                                      during semantic chunking.
+        min_chunk_size (int): The minimum character length for a chunk. Chunks shorter
+                              than this are merged with adjacent ones if possible.
     """
 
     def __init__(self, language_model: str = "en_core_web_sm", embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",

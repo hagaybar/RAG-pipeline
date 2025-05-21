@@ -1,3 +1,10 @@
+"""
+This module offers utilities for fine-tuning YAML serialization.
+It includes `SmartQuotedStringDumper` for context-aware string quoting (quoting
+string values but not keys or numbers), and `enforce_scalar_types` to convert
+numeric-looking strings to actual numbers, enhancing YAML readability and type
+fidelity.
+"""
 # scripts/utils/yaml_utils.py
 import yaml
 
@@ -6,7 +13,26 @@ class SmartQuotedStringDumper(yaml.SafeDumper):
     Dumper that quotes string values but leaves keys and numbers unquoted.
     """
 
-    def represent_str(self, data):
+    def represent_str(self, data: str):
+        """
+        Overrides default string representation to selectively quote strings.
+
+        This method checks the context of the string being represented. If the
+        string (`data`) is determined to be a key within a YAML mapping, it
+        delegates to the parent class's `represent_str` method, which typically
+        results in unquoted keys if they are simple scalars. For all other
+        strings (i.e., values, or strings where the key context cannot be
+        reliably determined), it forces the string to be represented as a
+        double-quoted scalar (`style='"'`). This ensures that string values are
+        explicitly quoted, enhancing clarity, while keys can remain unquoted
+        for better readability.
+
+        Args:
+            data (str): The string data to be represented in YAML.
+
+        Returns:
+            yaml.Node: The YAML node representing the string, with appropriate quoting.
+        """
         # Check if we're inside a key context by inspecting the parent node
         if self.context_stack and isinstance(self.context_stack[-1], yaml.MappingNode):
             is_key = (self.context_stack[-1].value.index(self.cur_node) % 2 == 0)
