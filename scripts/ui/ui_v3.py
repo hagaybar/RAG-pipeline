@@ -49,6 +49,7 @@ with tabs[0]:
         # List all available configs
         config_list = list_config_files()
         selected_config = st.selectbox("Available Configs:", config_list)
+        st.session_state.confirm_delete = False
 
         # Load the selected config file
         config_path = os.path.join("configs", "tasks", os.path.basename(selected_config))
@@ -94,12 +95,24 @@ with tabs[0]:
 
         # Delete
         with cols[3]:
-            if st.button("Delete"):
-                try:
-                    os.remove(config_path)
-                    st.success(f"🗑️ Deleted {selected_config}")
-                except Exception as e:
-                    st.error(f"❌ Deletion failed: {e}")
+            if not st.session_state.get("confirm_delete", False):
+                if st.button("Delete"):
+                    st.session_state.confirm_delete = True
+            else:
+                st.warning(f"⚠️ Are you sure you want to delete `{selected_config}`?")
+                col_yes, col_no = st.columns([1, 1])
+                with col_yes:
+                    if st.button("✅ Confirm Delete"):
+                        try:
+                            os.remove(config_path)
+                            st.success(f"🗑️ Deleted {selected_config}")
+                            st.session_state.confirm_delete = False
+                        except Exception as e:
+                            st.error(f"❌ Deletion failed: {e}")
+                with col_no:
+                    if st.button("❌ Cancel"):
+                        st.session_state.confirm_delete = False
+
 
 
     with st.expander("➕ Create New Task"):
