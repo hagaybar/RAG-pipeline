@@ -894,6 +894,9 @@ with tabs[3]:
                                 st.session_state.selected_chunk_for_detail_review = chunk_text
                                 metadata_to_show = {k: v for k, v in chunk_record.items() if k not in ["EntryID", "Raw Body", "Cleaned Body", "Chunk"]}
                                 st.session_state.selected_chunk_metadata_for_detail = metadata_to_show
+                                print(f"DEBUG_UI: 'View Details' button clicked for chunk {i+1} of email {selected_email_id}.")
+                                print(f"DEBUG_UI: Set selected_chunk_for_detail_review to: '{st.session_state.selected_chunk_for_detail_review[:200]}...' (preview)") # Log a preview
+                                print(f"DEBUG_UI: Set selected_chunk_metadata_for_detail to: {st.session_state.selected_chunk_metadata_for_detail}")
                                 st.rerun() # To update the detail view immediately
                 else:
                      st.info("No chunk records available for this email (list of chunks is empty).")
@@ -901,6 +904,17 @@ with tabs[3]:
                 st.info("No chunks found or 'Chunk' column missing for this email in the data.")
 
             # Display Area for Selected Chunk Details
+            # Ensure this is outside any loops from the chunk listing, typically after the chunk listing loop and before the detail display section.
+            print(f"DEBUG_UI: Checking conditions for displaying chunk details.")
+            # Make the preview safe, especially if the value could be None or not a string initially
+            detail_review_preview = st.session_state.get('selected_chunk_for_detail_review')
+            if isinstance(detail_review_preview, str):
+                detail_review_preview = f"'{detail_review_preview[:200]}...' (preview)"
+            else:
+                detail_review_preview = str(detail_review_preview) # Convert None or other types to string for logging
+            print(f"DEBUG_UI: Current value of st.session_state.selected_chunk_for_detail_review: {detail_review_preview}")
+            print(f"DEBUG_UI: Current value of st.session_state.selected_chunk_metadata_for_detail: {st.session_state.get('selected_chunk_metadata_for_detail')}")
+            
             if st.session_state.get("selected_chunk_for_detail_review"):
                 st.markdown("---")
                 st.markdown("#### Selected Chunk Details")
