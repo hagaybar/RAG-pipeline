@@ -10,6 +10,7 @@ import win32com.client as win32
 import pandas as pd
 from datetime import datetime, timedelta
 import pythoncom # Added for COM initialization
+import threading # Added for detailed logging
 from scripts.utils.logger import LoggerManager
 
 
@@ -119,43 +120,98 @@ class EmailFetcher:
                 - Otherwise, returns `None`.
                 - Returns `None` or an empty DataFrame if no emails are fetched.
         """
-        pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
+        thread_id = threading.get_ident()
+        self.logger.info(f"[EmailFetcher][Thread: {thread_id}] Entering fetch_emails_from_folder.")
+        
+        com_initialized_in_this_call = False
+        hr_init_result = None
+
         try:
+            self.logger.info(f"[EmailFetcher][Thread: {thread_id}] Attempting pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED).")
+            hr_init_result = pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
+            # S_OK (0) means initialized successfully by this call.
+            # S_FALSE (1) means already initialized, possibly by an outer call or earlier on this thread.
+            # RPC_E_CHANGED_MODE means thread already init'd with different model.
+            self.logger.info(f"[EmailFetcher][Thread: {thread_id}] CoInitializeEx call completed. HRESULT: {hr_init_result}. Interpretation: 0=OK, 1=S_FALSE (already init'd), other=Error.")
+            if hr_init_result == 0 or hr_init_result == 1: # S_OK or S_FALSE
+                 com_initialized_in_this_call = True # Consider S_FALSE as "safe to proceed and we should uninit"
+            # If CoInitializeEx raises an error (e.g. RPC_E_CHANGED_MODE), it will be caught by the outer except block.
+
+            self.logger.info(f"[EmailFetcher][Thread: {thread_id}] Proceeding with Outlook COM operations.")
             outlook = self.connect_to_outlook()
             account_folder = self._get_account_folder(outlook)
             target_folder = self._get_target_folder(account_folder)
 
             cutoff = datetime.now() - timedelta(days=self.days)
-            filtered_items = target_folder.Items.Restrict(
-                f"[ReceivedTime] >= '{cutoff.strftime('%m/%d/%Y %H:%M %p')}'"
-            )
+            self.logger.debug(f"[EmailFetcher][Thread: {thread_id}] Filtering items received after: {cutoff.strftime('%m/%d/%Y %H:%M %p')}")
+            
+            restricted_items_call_successful = False
+            try:
+                filtered_items = target_folder.Items.Restrict(f"[ReceivedTime] >= '{cutoff.strftime('%m/%d/%Y %H:%M %p')}'")
+                restricted_items_call_successful = True
+            except pythoncom.com_error as e_restrict: # Catch specific COM errors
+                 self.logger.error(f"[EmailFetcher][Thread: {thread_id}] pythoncom.com_error during Items.Restrict: HRESULT={e_restrict.hresult}, Message={e_restrict.strerror}")
+                 raise # Re-raise to be caught by the outer try-except for general error message
+            except Exception as e_restrict_generic:
+                 self.logger.error(f"[EmailFetcher][Thread: {thread_id}] Generic error during Items.Restrict: {str(e_restrict_generic)}")
+                 raise
+
+            if not restricted_items_call_successful: # Should not be reached if error is raised
+                self.logger.warning(f"[EmailFetcher][Thread: {thread_id}] Items.Restrict call did not succeed (though no exception was caught - unusual).")
+                # Handle empty or problematic filtered_items if necessary
+                filtered_items = []
+
 
             email_data = []
-            for item in filtered_items:
-                if hasattr(item, "Class") and item.Class == 43: # 43 represents olMailItem
+            self.logger.info(f"[EmailFetcher][Thread: {thread_id}] Iterating through {len(filtered_items) if restricted_items_call_successful else 'UNKNOWN number of'} items...")
+            for item_count, item in enumerate(filtered_items):
+                if hasattr(item, "Class") and item.Class == 43: # olMail
+                    if item_count < 3: # Log details for first 3 items
+                        self.logger.debug(f"[EmailFetcher][Thread: {thread_id}] Processing item {item_count + 1} - EntryID: {getattr(item, 'EntryID', 'N/A')} Subject: {getattr(item, 'Subject', 'N/A')}")
                     email_data.append({
-                        "EntryID": item.EntryID, # Added EntryID
+                        "EntryID": item.EntryID,
                         "Subject": item.Subject,
                         "Sender": item.SenderName,
                         "Received": item.ReceivedTime.strftime("%Y-%m-%d %H:%M:%S"),
                         "Raw Body": item.Body if hasattr(item, "Body") else "No Body",
                         "Cleaned Body": self.clean_email_body(item.Body)
                     })
-
+            
             df = pd.DataFrame(email_data)
-            self.logger.info(f"Fetched {len(df)} emails from {self.folder_path}")
+            self.logger.info(f"[EmailFetcher][Thread: {thread_id}] Fetched {len(df)} emails from {self.folder_path}.")
 
             if save and not df.empty:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 out_path = os.path.join(self.output_dir, f"{timestamp}_{self.output_file}")
-                df.to_csv(out_path, sep="\t", index=False, encoding="utf-8")
-                self.logger.info(f"Saved to: {out_path}")
+                df.to_csv(out_path, sep="	", index=False, encoding="utf-8") # Note: Using literal tab for sep
+                self.logger.info(f"[EmailFetcher][Thread: {thread_id}] Saved to: {out_path}")
                 if not return_dataframe:
                     return out_path
             
             return df if return_dataframe else None
+
+        except pythoncom.com_error as e_com:
+            # This will catch COM errors from CoInitializeEx itself or any subsequent COM operation
+            self.logger.error(f"[EmailFetcher][Thread: {thread_id}] pythoncom.com_error occurred: HRESULT={e_com.hresult}, Message={e_com.strerror}, FullError={e_com}. HRESULT from CoInitializeEx was: {hr_init_result}")
+            # The original error was (-2147221008, 'CoInitialize has not been called.')
+            # This HRESULT -2147221008 (0x800401F0) is CO_E_NOTINITIALIZED.
+            raise  # Re-raise the com_error to be potentially caught by RAGPipeline and displayed in UI
+        except Exception as e_generic:
+            self.logger.error(f"[EmailFetcher][Thread: {thread_id}] An unexpected error occurred in fetch_emails_from_folder: {str(e_generic)}. HRESULT from CoInitializeEx was: {hr_init_result}")
+            raise # Re-raise generic error
         finally:
-            pythoncom.CoUninitialize()
+            final_thread_id = threading.get_ident()
+            self.logger.info(f"[EmailFetcher][Thread: {final_thread_id}] In finally block of fetch_emails_from_folder.")
+            if com_initialized_in_this_call: # Only uninitialize if CoInitializeEx seemed to succeed (returned 0 or 1)
+                try:
+                    pythoncom.CoUninitialize()
+                    self.logger.info(f"[EmailFetcher][Thread: {final_thread_id}] CoUninitialize called.")
+                except pythoncom.com_error as e_uninit_com: # Catch specific error during uninitialize
+                    self.logger.error(f"[EmailFetcher][Thread: {final_thread_id}] pythoncom.com_error during CoUninitialize: HRESULT={e_uninit_com.hresult}, Message={e_uninit_com.strerror}")
+                except Exception as e_uninit_generic:
+                    self.logger.error(f"[EmailFetcher][Thread: {final_thread_id}] Generic exception during CoUninitialize: {str(e_uninit_generic)}")
+            else:
+                self.logger.info(f"[EmailFetcher][Thread: {final_thread_id}] CoUninitialize skipped because CoInitializeEx did not complete successfully or indicated it was not needed for this call's scope (HRESULT: {hr_init_result}).")
 
     def _get_account_folder(self, outlook):
         """
