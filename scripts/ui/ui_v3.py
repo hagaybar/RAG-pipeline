@@ -68,6 +68,8 @@ if "selected_chunk_for_detail_review" not in st.session_state: # For Chunk Detai
     st.session_state.selected_chunk_for_detail_review = None
 if "selected_chunk_metadata_for_detail" not in st.session_state: # For Chunk Detail Explorer
     st.session_state.selected_chunk_metadata_for_detail = None
+if "run_steps_execution_count" not in st.session_state: # For Tab 3 diagnostic
+    st.session_state.run_steps_execution_count = 0
 
 
 st.title("📬 RAG Pipeline Control Panel")
@@ -395,6 +397,10 @@ with tabs[2]:
     step_cols[0].checkbox("Generate Answer", key="run_generate_answer")
 
     if st.button("🚀 Run Selected Steps", key="run_pipeline_button"):
+        st.session_state.run_steps_execution_count += 1
+        st.warning(f"Debug: 'Run Selected Steps' button logic entered. Execution count: {st.session_state.run_steps_execution_count}")
+        print(f"DEBUG_UI: 'Run Selected Steps' button logic entered. Execution count: {st.session_state.run_steps_execution_count}")
+        
         st.session_state.pipeline_results = []  # Clear previous results
         selected_config_name = st.session_state.get("pipeline_action_selected_config")
         query_text = st.session_state.get("pipeline_query_input", "")
