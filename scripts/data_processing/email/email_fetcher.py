@@ -9,6 +9,7 @@ import os
 import win32com.client as win32
 import pandas as pd
 from datetime import datetime, timedelta
+import pythoncom # Added for COM initialization
 from scripts.utils.logger import LoggerManager
 
 
@@ -118,39 +119,43 @@ class EmailFetcher:
                 - Otherwise, returns `None`.
                 - Returns `None` or an empty DataFrame if no emails are fetched.
         """
-        outlook = self.connect_to_outlook()
-        account_folder = self._get_account_folder(outlook)
-        target_folder = self._get_target_folder(account_folder)
+        pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
+        try:
+            outlook = self.connect_to_outlook()
+            account_folder = self._get_account_folder(outlook)
+            target_folder = self._get_target_folder(account_folder)
 
-        cutoff = datetime.now() - timedelta(days=self.days)
-        filtered_items = target_folder.Items.Restrict(
-            f"[ReceivedTime] >= '{cutoff.strftime('%m/%d/%Y %H:%M %p')}'"
-        )
+            cutoff = datetime.now() - timedelta(days=self.days)
+            filtered_items = target_folder.Items.Restrict(
+                f"[ReceivedTime] >= '{cutoff.strftime('%m/%d/%Y %H:%M %p')}'"
+            )
 
-        email_data = []
-        for item in filtered_items:
-            if hasattr(item, "Class") and item.Class == 43:
-                email_data.append({
-                    "EntryID": item.EntryID, # Added EntryID
-                    "Subject": item.Subject,
-                    "Sender": item.SenderName,
-                    "Received": item.ReceivedTime.strftime("%Y-%m-%d %H:%M:%S"),
-                    "Raw Body": item.Body if hasattr(item, "Body") else "No Body",
-                    "Cleaned Body": self.clean_email_body(item.Body)
-                })
+            email_data = []
+            for item in filtered_items:
+                if hasattr(item, "Class") and item.Class == 43: # 43 represents olMailItem
+                    email_data.append({
+                        "EntryID": item.EntryID, # Added EntryID
+                        "Subject": item.Subject,
+                        "Sender": item.SenderName,
+                        "Received": item.ReceivedTime.strftime("%Y-%m-%d %H:%M:%S"),
+                        "Raw Body": item.Body if hasattr(item, "Body") else "No Body",
+                        "Cleaned Body": self.clean_email_body(item.Body)
+                    })
 
-        df = pd.DataFrame(email_data)
-        self.logger.info(f"Fetched {len(df)} emails from {self.folder_path}")
+            df = pd.DataFrame(email_data)
+            self.logger.info(f"Fetched {len(df)} emails from {self.folder_path}")
 
-        if save and not df.empty:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            out_path = os.path.join(self.output_dir, f"{timestamp}_{self.output_file}")
-            df.to_csv(out_path, sep="\t", index=False, encoding="utf-8")
-            self.logger.info(f"Saved to: {out_path}")
-            if not return_dataframe:
-                return out_path
-
-        return df if return_dataframe else None
+            if save and not df.empty:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                out_path = os.path.join(self.output_dir, f"{timestamp}_{self.output_file}")
+                df.to_csv(out_path, sep="\t", index=False, encoding="utf-8")
+                self.logger.info(f"Saved to: {out_path}")
+                if not return_dataframe:
+                    return out_path
+            
+            return df if return_dataframe else None
+        finally:
+            pythoncom.CoUninitialize()
 
     def _get_account_folder(self, outlook):
         """
