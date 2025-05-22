@@ -875,18 +875,26 @@ with tabs[3]:
                     for i, chunk_record in enumerate(chunk_records):
                         chunk_text = chunk_record.get("Chunk", "N/A")
                         
-                        col1, col2 = st.columns([0.85, 0.15]) # Adjusted column ratio
+                        st.markdown("---") # Visual separator for each chunk
+                        col1, col2 = st.columns([0.85, 0.15]) # Using existing column ratio
+
                         with col1:
-                            with st.expander(f"Chunk {i+1}: {chunk_text[:50]}...", expanded=False):
-                                st.markdown(chunk_text)
+                            st.markdown(f"**Chunk {i+1}**") # Simple title for the chunk
+                            st.text_area(
+                                label=f"chunk_content_{selected_email_id}_{i}", # Unique label
+                                value=chunk_text,
+                                height=150,  # Adjust height as needed
+                                disabled=True,
+                                key=f"chunk_text_display_{selected_email_id}_{i}" # Unique key
+                            )
                         with col2:
-                            # Use a unique key for each button, incorporating email_id and chunk index
+                            # "View Details" button logic remains largely the same
                             button_key = f"detail_btn_{selected_email_id}_{i}"
-                            if st.button("🔍 Details", key=button_key):
+                            if st.button(f"View Details", key=button_key): # Changed label
                                 st.session_state.selected_chunk_for_detail_review = chunk_text
                                 metadata_to_show = {k: v for k, v in chunk_record.items() if k not in ["EntryID", "Raw Body", "Cleaned Body", "Chunk"]}
                                 st.session_state.selected_chunk_metadata_for_detail = metadata_to_show
-                                st.experimental_rerun() # Rerun to show the details section
+                                st.experimental_rerun() # To update the detail view immediately
                 else:
                      st.info("No chunk records available for this email (list of chunks is empty).")
             else:
