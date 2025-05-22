@@ -277,7 +277,7 @@ with tabs[0]:
                     # Clear input field
                     st.session_state.new_task_name_input = ""
                     # Force rerun to update the selectbox in the other expander
-                    st.experimental_rerun()
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Failed to create task: {e}")
 
@@ -894,7 +894,7 @@ with tabs[3]:
                                 st.session_state.selected_chunk_for_detail_review = chunk_text
                                 metadata_to_show = {k: v for k, v in chunk_record.items() if k not in ["EntryID", "Raw Body", "Cleaned Body", "Chunk"]}
                                 st.session_state.selected_chunk_metadata_for_detail = metadata_to_show
-                                st.experimental_rerun() # To update the detail view immediately
+                                st.rerun() # To update the detail view immediately
                 else:
                      st.info("No chunk records available for this email (list of chunks is empty).")
             else:
@@ -918,7 +918,7 @@ with tabs[3]:
                 if st.button("Clear Details", key="clear_chunk_detail_button"):
                     st.session_state.selected_chunk_for_detail_review = None
                     st.session_state.selected_chunk_metadata_for_detail = None
-                    st.experimental_rerun()
+                    st.rerun()
 
             # --- Chunk Metrics for Selected Email ---
             st.markdown("---")
