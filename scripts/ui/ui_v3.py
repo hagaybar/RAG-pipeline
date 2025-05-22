@@ -400,7 +400,10 @@ with tabs[2]:
             st.session_state.pipeline_results = ["Error: Query text is required for 'Retrieve Chunks' or 'Generate Answer'."]
             st.session_state.show_pipeline_output_area = True
         else:
-            config_path = os.path.join("configs", "tasks", selected_config_name)
+            # Robust path construction for Tab 3
+            path_parts = selected_config_name.replace("\\", "/").split("/")
+            pure_filename = path_parts[-1]
+            config_path = os.path.join("configs", "tasks", pure_filename)
             
             with st.spinner("Running pipeline steps..."):
                 try:
@@ -509,7 +512,10 @@ with tabs[3]:
             if not selected_stat_config_name:
                 st.info("Please select a task configuration first.")
             else:
-                config_file_path = os.path.join("configs", "tasks", selected_stat_config_name)
+                # Robust path construction for Tab 4 - Embedding Stats
+                path_parts_stats = selected_stat_config_name.replace("\\", "/").split("/")
+                pure_filename_stats = path_parts_stats[-1]
+                config_file_path = os.path.join("configs", "tasks", pure_filename_stats)
                 
                 # Helper function to load YAML (can be defined inline or globally)
                 def load_yaml_for_stats(p):
@@ -590,7 +596,10 @@ with tabs[3]:
         elif not query_text:
             st.error("Please enter a query for the similarity test.")
         else:
-            config_path = os.path.join("configs", "tasks", selected_config_name)
+            # Robust path construction for Tab 4 - Similarity Test
+            path_parts_similarity = selected_config_name.replace("\\", "/").split("/")
+            pure_filename_similarity = path_parts_similarity[-1]
+            config_path = os.path.join("configs", "tasks", pure_filename_similarity)
             
             with st.spinner("Retrieving similar chunks..."):
                 try:
@@ -692,7 +701,10 @@ with tabs[3]:
                 st.error("Please select a task configuration under 'Embedding Stats' to download its metadata.")
                 st.session_state.metadata_to_download = None # Clear any previous data
             else:
-                config_file_path = os.path.join("configs", "tasks", selected_config_name_for_download)
+                # Robust path construction for Tab 4 - File Tools (Download)
+                path_parts_download = selected_config_name_for_download.replace("\\", "/").split("/")
+                pure_filename_download = path_parts_download[-1]
+                config_file_path = os.path.join("configs", "tasks", pure_filename_download)
                 
                 def load_yaml_for_file_tools(p): # Local helper
                     try:
@@ -754,7 +766,11 @@ with tabs[3]:
             
         if st.button("Load Chunk Data", key="load_chunk_review_data_button"):
             if selected_task_config_name_for_review:
-                raw_df = load_chunk_data_for_task(selected_task_config_name_for_review)
+                # Robust path construction for Tab 4 - Chunking Reviewer
+                path_parts_chunk_review = selected_task_config_name_for_review.replace("\\", "/").split("/")
+                pure_filename_chunk_review = path_parts_chunk_review[-1]
+                raw_df = load_chunk_data_for_task(pure_filename_chunk_review) # Pass pure filename
+
                 if raw_df is not None and not raw_df.empty:
                     st.session_state.chunk_review_data = raw_df
                     st.session_state.grouped_chunk_data = group_chunks_by_email(raw_df) # Uses "EntryID" by default
