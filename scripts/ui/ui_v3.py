@@ -54,6 +54,7 @@ with tabs[0]:
         # Load the selected config file
         config_path = os.path.join("configs", "tasks", os.path.basename(selected_config))
         config_text = load_config(config_path)
+        st.write("🔍 confirm_delete state:", st.session_state.get("confirm_delete", False))
 
         # Display the loaded config content
         cols = st.columns(4)
@@ -92,26 +93,26 @@ with tabs[0]:
                             st.session_state.open_dup_box = False
                         except Exception as e:
                             st.error(f"❌ Duplication failed: {e}")
-
         # Delete
         with cols[3]:
-            if not st.session_state.get("confirm_delete", False):
-                if st.button("Delete"):
-                    st.session_state.confirm_delete = True
-            else:
+            # Safely check click and update session state immediately
+            delete_clicked = st.button("Delete")
+            if delete_clicked:
+                st.session_state.confirm_delete = True
+
+            # Now show confirmation dialog
+            if st.session_state.get("confirm_delete", False):
                 st.warning(f"⚠️ Are you sure you want to delete `{selected_config}`?")
-                col_yes, col_no = st.columns([1, 1])
-                with col_yes:
-                    if st.button("✅ Confirm Delete"):
-                        try:
-                            os.remove(config_path)
-                            st.success(f"🗑️ Deleted {selected_config}")
-                            st.session_state.confirm_delete = False
-                        except Exception as e:
-                            st.error(f"❌ Deletion failed: {e}")
-                with col_no:
-                    if st.button("❌ Cancel"):
-                        st.session_state.confirm_delete = False
+                col_yes, col_no = st.columns(2)
+                if col_yes.button("✅ Confirm Delete"):
+                    try:
+                        os.remove(config_path)
+                        st.success(f"🗑️ Deleted {selected_config}")
+                    except Exception as e:
+                        st.error(f"❌ Deletion failed: {e}")
+                    st.session_state.confirm_delete = False
+                if col_no.button("❌ Cancel"):
+                    st.session_state.confirm_delete = False
 
 
 
@@ -209,7 +210,7 @@ with tabs[1]:
         st.json(load_json(meta_path))
 
     with st.expander("💬 Answer Output"):
-        st.code(load_text(answer_path), language="text")
+        st.text_area("Answer", value=load_text(answer_path), height=250, disabled=True)
 
     with st.expander("📜 Query Debug Log"):
         st.code(load_text(debug_path), language="text")
