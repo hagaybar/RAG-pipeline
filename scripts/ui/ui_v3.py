@@ -1,3 +1,17 @@
+import os
+import sys # Ensure sys is imported
+
+# Calculate the project root based on the current file's location
+# Assumes ui_v3.py is in scripts/ui/
+# os.path.dirname(__file__) gives scripts/ui
+# os.path.join(..., "../../") goes up two levels to Rag_Project
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+
+# Add PROJECT_ROOT to sys.path if it's not already there
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# All other original imports (import streamlit as st, etc.) should follow this block.
 import streamlit as st
 import glob
 import yaml
