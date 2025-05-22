@@ -773,7 +773,9 @@ with tabs[3]:
 
     st.markdown("---")
     st.markdown("### Chunking Reviewer")
-    with st.expander("🔍 Review Email Chunks", expanded=False):
+    open_flag = bool(st.session_state.get("selected_chunk_for_detail_review"))
+    with st.expander("🔍 Review Email Chunks", expanded=open_flag):
+
         selected_task_config_name_for_review = st.session_state.get("stats_selected_config")
 
         if selected_task_config_name_for_review:
@@ -897,7 +899,7 @@ with tabs[3]:
                                 print(f"DEBUG_UI: 'View Details' button clicked for chunk {i+1} of email {selected_email_id}.")
                                 print(f"DEBUG_UI: Set selected_chunk_for_detail_review to: '{st.session_state.selected_chunk_for_detail_review[:200]}...' (preview)") # Log a preview
                                 print(f"DEBUG_UI: Set selected_chunk_metadata_for_detail to: {st.session_state.selected_chunk_metadata_for_detail}")
-                                # st.rerun() # To update the detail view immediately
+                                
                 else:
                      st.info("No chunk records available for this email (list of chunks is empty).")
             else:
@@ -932,7 +934,7 @@ with tabs[3]:
                 if st.button("Clear Details", key="clear_chunk_detail_button"):
                     st.session_state.selected_chunk_for_detail_review = None
                     st.session_state.selected_chunk_metadata_for_detail = None
-                    st.rerun()
+                    
 
             # --- Chunk Metrics for Selected Email ---
             st.markdown("---")
