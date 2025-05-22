@@ -897,7 +897,7 @@ with tabs[3]:
                                 print(f"DEBUG_UI: 'View Details' button clicked for chunk {i+1} of email {selected_email_id}.")
                                 print(f"DEBUG_UI: Set selected_chunk_for_detail_review to: '{st.session_state.selected_chunk_for_detail_review[:200]}...' (preview)") # Log a preview
                                 print(f"DEBUG_UI: Set selected_chunk_metadata_for_detail to: {st.session_state.selected_chunk_metadata_for_detail}")
-                                st.rerun() # To update the detail view immediately
+                                # st.rerun() # To update the detail view immediately
                 else:
                      st.info("No chunk records available for this email (list of chunks is empty).")
             else:
