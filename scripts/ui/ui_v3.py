@@ -4,6 +4,12 @@ import yaml
 import os
 import faiss # Added for Embedding Stats
 import pandas as pd # Added for Embedding Stats
+import sys
+# Add project root to sys.path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from scripts.pipeline.rag_pipeline import RAGPipeline
 
 st.set_page_config(page_title="RAG Pipeline UI", layout="wide")
