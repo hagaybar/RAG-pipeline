@@ -4,12 +4,7 @@ import yaml
 import os
 import faiss # Added for Embedding Stats
 import pandas as pd # Added for Embedding Stats
-import sys
-# Add project root to sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
+import numpy as np # Added for Chunk Metrics
 from scripts.pipeline.rag_pipeline import RAGPipeline
 
 st.set_page_config(page_title="RAG Pipeline UI", layout="wide")
@@ -44,6 +39,22 @@ if "open_dup_box" not in st.session_state:
 if "dup_mode" not in st.session_state: # For duplicate button, related to open_dup_box
     st.session_state.dup_mode = False
 
+# Chunk Reviewer specific session states
+if "chunk_review_data" not in st.session_state: 
+    st.session_state.chunk_review_data = None
+if "grouped_chunk_data" not in st.session_state: 
+    st.session_state.grouped_chunk_data = None
+if "selected_email_id_for_review" not in st.session_state: 
+    st.session_state.selected_email_id_for_review = None
+if "current_email_body_for_review" not in st.session_state: 
+    st.session_state.current_email_body_for_review = None
+if "chunks_for_selected_email" not in st.session_state: 
+    st.session_state.chunks_for_selected_email = None
+if "selected_chunk_for_detail_review" not in st.session_state: # For Chunk Detail Explorer
+    st.session_state.selected_chunk_for_detail_review = None
+if "selected_chunk_metadata_for_detail" not in st.session_state: # For Chunk Detail Explorer
+    st.session_state.selected_chunk_metadata_for_detail = None
+
 
 st.title("📬 RAG Pipeline Control Panel")
 
@@ -75,6 +86,84 @@ def load_config(config_path: str) -> str:
             return f.read()
     except Exception as e:
         return f"Error reading config: {e}"
+
+# --- Helper Functions for Chunking Reviewer (Global Scope) ---
+
+def load_chunk_data_for_task(task_config_name: str) -> pd.DataFrame | None:
+    """
+    Loads the chunk TSV file for a given task configuration.
+    """
+    config_file_path = os.path.join("configs", "tasks", task_config_name)
+
+    def _load_yaml_config(file_path):
+        try:
+            with open(file_path, 'r') as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            st.error(f"Error loading YAML config {file_path}: {str(e)}")
+            return None
+    
+    task_config_data = _load_yaml_config(config_file_path)
+
+    if task_config_data:
+        chunked_emails_path = task_config_data.get("paths", {}).get("chunked_emails")
+        if not chunked_emails_path:
+            st.error(f"Path to 'chunked_emails' not found in config for task '{task_config_name}'.")
+            return None
+        
+        if not os.path.exists(chunked_emails_path):
+            st.error(f"Chunk file path not found or file does not exist for task '{task_config_name}'. Path: {chunked_emails_path}")
+            return None
+        
+        try:
+            df = pd.read_csv(chunked_emails_path, sep="\t", on_bad_lines='skip')
+            return df
+        except Exception as e:
+            st.error(f"Error loading chunk TSV file {chunked_emails_path}: {str(e)}")
+            return None
+    else:
+        return None
+
+def group_chunks_by_email(chunk_df: pd.DataFrame, email_id_column: str = "EntryID") -> dict[str, pd.DataFrame]:
+    """
+    Groups the loaded chunks by a unique email identifier.
+    """
+    if chunk_df is None or chunk_df.empty:
+        st.warning("Cannot group chunks: DataFrame is empty or None.")
+        return {}
+    
+    if email_id_column not in chunk_df.columns:
+        st.warning(f"Cannot group chunks: Email ID column '{email_id_column}' is missing from DataFrame. Available columns: {chunk_df.columns.tolist()}")
+        return {}
+        
+    try:
+        # Ensure the email_id_column is string type to avoid issues with mixed types if some IDs are numeric
+        # Also handle potential NaN values if EntryID was missing for some rows, convert to a placeholder string
+        chunk_df[email_id_column] = chunk_df[email_id_column].astype(str).fillna("MISSING_ENTRY_ID")
+        grouped_data = {str(email_id): group_df for email_id, group_df in chunk_df.groupby(email_id_column)}
+        return grouped_data
+    except Exception as e:
+        st.error(f"Error grouping chunks by '{email_id_column}': {str(e)}")
+        return {}
+
+
+def get_original_email_body(email_specific_df: pd.DataFrame, body_column_candidates: list[str] = ["Raw Body", "Cleaned Body"]) -> str | None:
+    """
+    Retrieves the original email body from the DataFrame corresponding to a single email.
+    """
+    if email_specific_df is None or email_specific_df.empty:
+        return None
+        
+    for column_name in body_column_candidates:
+        if column_name in email_specific_df.columns:
+            # Assuming the body is consistent across all chunks of the same email
+            body_value = email_specific_df[column_name].iloc[0]
+            if pd.notna(body_value): # Check if the value is not NaN or None
+                return str(body_value) 
+            # If body_value is NaN/None, try next candidate
+            
+    st.warning(f"Could not find any of the specified body columns ({body_column_candidates}) with non-empty content in the provided data for this email.")
+    return None
 
 # Top-level tab navigation
 tabs = st.tabs(["Tasks 🛠", "Runs & Logs 📊", "Pipeline Actions ⚙️", "Utilities & Tools 🧰"])
@@ -649,3 +738,216 @@ with tabs[3]:
             )
         else:
             st.caption("Click 'Prepare Metadata for Download' from a selected task to enable download.")
+
+    st.markdown("---")
+    st.markdown("### Chunking Reviewer")
+    with st.expander("🔍 Review Email Chunks", expanded=False):
+        selected_task_config_name_for_review = st.session_state.get("stats_selected_config")
+
+        if selected_task_config_name_for_review:
+            st.write(f"Reviewing data for task: **{selected_task_config_name_for_review}**")
+        else:
+            st.warning("Please select a Task Configuration in the 'Embedding Stats' section above to load data for chunk review.")
+            # Using st.stop() might be too abrupt if other elements in Tab 4 should still render.
+            # Consider simply not rendering the rest of this expander's UI if that's acceptable.
+            # For now, we'll allow rendering to continue but subsequent widgets will check selected_task_config_name_for_review.
+            
+        if st.button("Load Chunk Data", key="load_chunk_review_data_button"):
+            if selected_task_config_name_for_review:
+                raw_df = load_chunk_data_for_task(selected_task_config_name_for_review)
+                if raw_df is not None and not raw_df.empty:
+                    st.session_state.chunk_review_data = raw_df
+                    st.session_state.grouped_chunk_data = group_chunks_by_email(raw_df) # Uses "EntryID" by default
+                    
+                    if not st.session_state.grouped_chunk_data:
+                        st.error("Failed to group chunk data by email ID. Ensure 'EntryID' column exists and is populated correctly in the chunk file.")
+                        st.session_state.chunk_review_data = None # Clear to avoid partial state
+                    else:
+                        st.success(f"Loaded and grouped chunk data for {len(st.session_state.grouped_chunk_data)} unique email EntryIDs.")
+                        # Reset selections for email and body if data is reloaded
+                        st.session_state.selected_email_id_for_review = None
+                        st.session_state.current_email_body_for_review = None
+                        st.session_state.chunks_for_selected_email = None
+                else:
+                    st.error(f"No chunk data loaded or data is empty for task '{selected_task_config_name_for_review}'. Check the chunk file path in the task config and ensure the file is not empty.")
+                    st.session_state.chunk_review_data = None
+                    st.session_state.grouped_chunk_data = None
+            else:
+                st.error("Cannot load chunk data: No task configuration selected in 'Embedding Stats'.")
+
+        if st.session_state.get("grouped_chunk_data"):
+            email_ids = list(st.session_state.grouped_chunk_data.keys())
+            if not email_ids:
+                st.info("No email IDs found in the loaded chunk data.")
+            else:
+                current_selected_email_id = st.session_state.get("selected_email_id_for_review")
+                
+                # Determine index for selectbox, default to 0 if current selection not in new list or no selection
+                select_email_index = 0
+                if current_selected_email_id in email_ids:
+                    select_email_index = email_ids.index(current_selected_email_id)
+                
+                # If there's no current selection, and email_ids is not empty,
+                # set the first email_id as the default selection for the UI
+                # but only if selected_email_id_for_review is currently None
+                if not current_selected_email_id and email_ids and st.session_state.selected_email_id_for_review is None:
+                     st.session_state.selected_email_id_for_review = email_ids[0] # Pre-select the first one
+                     current_selected_email_id = email_ids[0] # Update for immediate use
+
+                # The selectbox itself
+                # The 'on_change' callback for selectbox is implicit; Streamlit reruns the script.
+                # We will handle the logic for when the selection changes *after* the selectbox.
+                newly_selected_email_id = st.selectbox(
+                    "Select Email ID to Review:", 
+                    email_ids, 
+                    index=select_email_index, 
+                    key="chunk_review_selected_email_id",
+                    help="Select an Email's EntryID to see its original body and chunks."
+                )
+
+                # Logic to update details if selection has changed or if it's the first load with a default
+                if newly_selected_email_id and (newly_selected_email_id != current_selected_email_id or st.session_state.current_email_body_for_review is None) :
+                    st.session_state.selected_email_id_for_review = newly_selected_email_id
+                    email_df = st.session_state.grouped_chunk_data[newly_selected_email_id]
+                    st.session_state.current_email_body_for_review = get_original_email_body(email_df)
+                    if "Chunk" in email_df.columns:
+                        # Store list of dicts (each dict is a row/chunk)
+                        st.session_state.chunks_for_selected_email = email_df.to_dict('records') 
+                    else:
+                        st.session_state.chunks_for_selected_email = []
+                        st.warning("Missing 'Chunk' column in the data for this email.")
+                    # When email selection changes, clear any previously selected chunk detail
+                    st.session_state.selected_chunk_for_detail_review = None
+                    st.session_state.selected_chunk_metadata_for_detail = None
+
+
+        # Display Area for Original Email and Chunks
+        if st.session_state.get("selected_email_id_for_review"):
+            selected_email_id = st.session_state.selected_email_id_for_review # Convenience
+            
+            if st.session_state.get("current_email_body_for_review"):
+                st.markdown("#### Original Email Body")
+                st.text_area("Full Email Content", st.session_state.current_email_body_for_review, height=300, disabled=True, key=f"original_email_display_{selected_email_id}")
+            else:
+                st.warning(f"Original email body could not be retrieved for Email ID: {selected_email_id}.")
+
+            # Display Chunks from this Email
+            if st.session_state.get("chunks_for_selected_email"):
+                st.markdown("#### Chunks from this Email")
+                chunk_records = st.session_state.chunks_for_selected_email
+                if chunk_records:
+                    for i, chunk_record in enumerate(chunk_records):
+                        chunk_text = chunk_record.get("Chunk", "N/A")
+                        
+                        col1, col2 = st.columns([0.85, 0.15]) # Adjusted column ratio
+                        with col1:
+                            with st.expander(f"Chunk {i+1}: {chunk_text[:50]}...", expanded=False):
+                                st.markdown(chunk_text)
+                        with col2:
+                            # Use a unique key for each button, incorporating email_id and chunk index
+                            button_key = f"detail_btn_{selected_email_id}_{i}"
+                            if st.button("🔍 Details", key=button_key):
+                                st.session_state.selected_chunk_for_detail_review = chunk_text
+                                metadata_to_show = {k: v for k, v in chunk_record.items() if k not in ["EntryID", "Raw Body", "Cleaned Body", "Chunk"]}
+                                st.session_state.selected_chunk_metadata_for_detail = metadata_to_show
+                                st.experimental_rerun() # Rerun to show the details section
+                else:
+                     st.info("No chunk records available for this email (list of chunks is empty).")
+            else:
+                st.info("No chunks found or 'Chunk' column missing for this email in the data.")
+
+            # Display Area for Selected Chunk Details
+            if st.session_state.get("selected_chunk_for_detail_review"):
+                st.markdown("---")
+                st.markdown("#### Selected Chunk Details")
+                selected_chunk_text = st.session_state.selected_chunk_for_detail_review
+                selected_chunk_meta = st.session_state.get("selected_chunk_metadata_for_detail", {})
+                
+                st.markdown(f"**Text:**")
+                st.markdown(f"> _{selected_chunk_text}_") # Display as blockquote
+                st.markdown(f"**Length:** {len(selected_chunk_text)} characters")
+                
+                if selected_chunk_meta:
+                    st.markdown("**Other Metadata:**")
+                    st.json(selected_chunk_meta, expanded=True)
+                
+                if st.button("Clear Details", key="clear_chunk_detail_button"):
+                    st.session_state.selected_chunk_for_detail_review = None
+                    st.session_state.selected_chunk_metadata_for_detail = None
+                    st.experimental_rerun()
+
+            # --- Chunk Metrics for Selected Email ---
+            st.markdown("---")
+            st.markdown("#### Chunk Metrics for Selected Email")
+            chunk_records_for_metrics = st.session_state.get("chunks_for_selected_email", [])
+            num_chunks_for_metrics = len(chunk_records_for_metrics)
+
+            st.write(f"Number of Chunks: {num_chunks_for_metrics}")
+
+            if num_chunks_for_metrics > 0:
+                chunk_lengths_for_metrics = [len(str(record.get("Chunk", ""))) for record in chunk_records_for_metrics]
+                
+                avg_chunk_length = np.mean(chunk_lengths_for_metrics) if chunk_lengths_for_metrics else 0
+                st.write(f"Average Chunk Length: {avg_chunk_length:.2f} characters")
+                
+                min_chunk_length = np.min(chunk_lengths_for_metrics) if chunk_lengths_for_metrics else 0
+                max_chunk_length = np.max(chunk_lengths_for_metrics) if chunk_lengths_for_metrics else 0
+                st.write(f"Min/Max Chunk Length: {min_chunk_length} / {max_chunk_length} characters")
+
+                if chunk_lengths_for_metrics:
+                    st.write("**Chunk Length Distribution (Binned):**")
+                    # Determine number of bins
+                    if num_chunks_for_metrics > 1:
+                        num_bins = int(np.ceil(np.log2(num_chunks_for_metrics) + 1)) 
+                    else: # Handle case with 1 chunk
+                        num_bins = 1
+                    
+                    if num_bins <= 0: num_bins = 5 # Fallback for very few unique values or edge cases
+                    if max_chunk_length == min_chunk_length and num_bins > 1: # All chunks same length
+                        num_bins = 1
+
+                    hist_values, bin_edges = np.histogram(chunk_lengths_for_metrics, bins=num_bins)
+                    
+                    bin_labels = []
+                    if num_bins == 1 and max_chunk_length == min_chunk_length:
+                         bin_labels = [f"{int(min_chunk_length)}"]
+                    else:
+                        for i in range(len(bin_edges)-1):
+                            # Make bin labels more readable, especially for integer lengths
+                            edge_start = int(np.floor(bin_edges[i]))
+                            edge_end = int(np.ceil(bin_edges[i+1]))
+                            if i == len(bin_edges) - 2: # Last bin, ensure it includes the max value
+                                edge_end = int(np.ceil(max_chunk_length))
+                            
+                            if edge_start == edge_end or (edge_end - edge_start == 1 and edge_start == bin_edges[i] and edge_end == bin_edges[i+1]) : # if bin is for a single integer value
+                                bin_labels.append(f"{edge_start}")
+                            else:
+                                bin_labels.append(f"{edge_start}-{edge_end-1 if edge_end > edge_start else edge_end}")
+
+
+                    if len(hist_values) == len(bin_labels) and sum(hist_values) > 0:
+                        # Ensure bin_labels are unique if possible, or aggregate if not (though np.histogram should handle this)
+                        # For st.bar_chart, index must be unique. If binning results in non-unique labels (e.g. "100-100"), aggregate.
+                        # However, the above logic should try to make them distinct for ranges.
+                        # If all values are the same, hist_values will have 1 element.
+                        hist_df_data = {'count': hist_values}
+                        if len(bin_labels) == len(hist_values):
+                             hist_df = pd.DataFrame(hist_df_data, index=bin_labels)
+                             hist_df.index.name = 'length_range'
+                             st.bar_chart(hist_df)
+                        elif len(hist_values) == 1: # Single bin case, e.g. all chunks same length
+                             st.bar_chart(pd.DataFrame({'count': hist_values}, index=[f"{min_chunk_length}"]))
+                        else:
+                             st.caption("Could not prepare data for histogram due to binning issues.")
+
+                    elif sum(hist_values) > 0 and len(hist_values) ==1 : 
+                        st.bar_chart(pd.DataFrame({'count': hist_values}, index=[f"{min_chunk_length}-{max_chunk_length}" if min_chunk_length!=max_chunk_length else str(min_chunk_length)]))
+                    else:
+                        st.caption("Not enough data or variability for a binned length distribution chart.")
+                else:
+                    st.caption("No chunk lengths to display distribution.")
+            else:
+                st.write("No chunks available for this email to calculate metrics.")
+
+        elif st.session_state.get("grouped_chunk_data"):
+            st.info("Select an Email ID from the dropdown above to see its details.")

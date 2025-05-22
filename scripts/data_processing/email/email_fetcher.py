@@ -131,6 +131,7 @@ class EmailFetcher:
         for item in filtered_items:
             if hasattr(item, "Class") and item.Class == 43:
                 email_data.append({
+                    "EntryID": item.EntryID, # Added EntryID
                     "Subject": item.Subject,
                     "Sender": item.SenderName,
                     "Received": item.ReceivedTime.strftime("%Y-%m-%d %H:%M:%S"),
