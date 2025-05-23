@@ -18,6 +18,8 @@ from datetime import datetime
 from scripts.data_processing.email.config_loader import ConfigLoader
 from scripts.data_processing.email.email_fetcher import EmailFetcher
 from scripts.data_processing.text.text_fetcher import TextFileFetcher # Added import
+from scripts.data_processing.xml.xml_fetcher import XMLFetcher # Added import for XML
+from scripts.data_processing.marc_xml.marc_xml_fetcher import MARCXMLFetcher # Added import for MARCXML
 
 from scripts.chunking.text_chunker_v2 import TextChunker
 from scripts.retrieval.chunk_retriever_v3 import ChunkRetriever
@@ -50,9 +52,10 @@ class RAGPipeline:
       and applies the configuration, setting up paths and instantiating necessary
       components like the appropriate embedder based on the config.
     - **Core RAG Stages**:
-        - `extract_and_chunk()`: Fetches raw data (e.g., emails via `EmailFetcher`),
-          cleans it, and divides it into smaller, manageable text chunks using
-          `TextChunker`.
+        - `extract_and_chunk()`: Fetches raw data (e.g., emails via `EmailFetcher`,
+          text files via `TextFileFetcher`, XML files via `XMLFetcher`,
+          or MARCXML files via `MARCXMLFetcher`), cleans it, and divides it into
+          smaller, manageable text chunks using `TextChunker`.
         - `embed_chunks()` / `embed_chunks_batch()`: Takes the processed chunks and
           generates vector embeddings using the configured `GeneralPurposeEmbedder`.
           Supports both regular and batch embedding modes.
@@ -271,12 +274,14 @@ class RAGPipeline:
         Based on the `data_type` parameter:
         - If "email", uses `EmailFetcher` to retrieve emails.
         - If "text_file", uses `TextFileFetcher` to retrieve text files.
+        - If "xml", uses `XMLFetcher` to retrieve and parse XML files.
+        - If "marcxml", uses `MARCXMLFetcher` to retrieve and parse MARCXML files.
         The fetched data is then processed by `TextChunker` and saved to a TSV file.
         The paths and configurations are determined by `self.config`.
 
         Args:
             data_type (str, optional): The type of data to process.
-                                       Can be "email" or "text_file". Defaults to "email".
+                                       Can be "email", "text_file", "xml", or "marcxml". Defaults to "email".
 
         Returns:
             str: The file path to the output TSV file containing the chunked data.
@@ -345,9 +350,52 @@ class RAGPipeline:
                 self.logger.warning(f"No text files found or processed by TextFileFetcher. Resulting chunk file will be empty.")
             else:
                 self.logger.info(f"Fetched {len(raw_data_df)} {source_data_description}.")
+
+        elif data_type == "xml":
+            self.logger.info("Fetching XML files...")
+            # Validate required config keys for xml
+            if "xml_files" not in self.config or "input_dir" not in self.config["xml_files"]:
+                self.logger.error("Missing 'xml_files.input_dir' in configuration for XMLFetcher.")
+                raise KeyError("Missing 'xml_files.input_dir' in configuration for XMLFetcher.")
+            if "paths" not in self.config or "chunked_xml_files" not in self.config["paths"]:
+                self.logger.error("Missing 'paths.chunked_xml_files' in configuration.")
+                raise KeyError("Missing 'paths.chunked_xml_files' in configuration.")
+
+            fetcher = XMLFetcher(input_dir=self.config["xml_files"]["input_dir"])
+            raw_data_df = fetcher.fetch_xml_files() # XMLFetcher returns a DataFrame
+            content_column_name = "Cleaned Text" # This is the column XMLFetcher produces
+            output_file_config_key = "chunked_xml_files"
+            source_data_description = "XML file entries"
+            # XMLFetcher returns an empty DataFrame with columns if no files are found.
+            # This is acceptable, and it will result in an empty chunked file.
+            if raw_data_df.empty:
+                self.logger.warning(f"No XML files found or processed by XMLFetcher. Resulting chunk file will be empty.")
+            else:
+                self.logger.info(f"Fetched {len(raw_data_df)} {source_data_description}.")
+
+        elif data_type == "marcxml":
+            self.logger.info("Fetching MARCXML files...")
+            # Validate required config keys for marcxml
+            if "marcxml_files" not in self.config or "input_dir" not in self.config["marcxml_files"]:
+                self.logger.error("Missing 'marcxml_files.input_dir' in configuration for MARCXMLFetcher.")
+                raise KeyError("Missing 'marcxml_files.input_dir' in configuration for MARCXMLFetcher.")
+            if "paths" not in self.config or "chunked_marcxml_files" not in self.config["paths"]:
+                self.logger.error("Missing 'paths.chunked_marcxml_files' in configuration.")
+                raise KeyError("Missing 'paths.chunked_marcxml_files' in configuration.")
+
+            fetcher = MARCXMLFetcher(input_dir=self.config["marcxml_files"]["input_dir"])
+            raw_data_df = fetcher.fetch_marc_xml_files() # MARCXMLFetcher returns a DataFrame
+            content_column_name = "Cleaned Text" # This is the column MARCXMLFetcher produces
+            output_file_config_key = "chunked_marcxml_files"
+            source_data_description = "MARCXML file records"
+            # MARCXMLFetcher returns an empty DataFrame with columns if no files/records are found.
+            if raw_data_df.empty:
+                self.logger.warning(f"No MARCXML records found or processed by MARCXMLFetcher. Resulting chunk file will be empty.")
+            else:
+                self.logger.info(f"Fetched {len(raw_data_df)} {source_data_description}.")
         else:
             self.logger.error(f"Unsupported data_type: {data_type}")
-            raise ValueError(f"Unsupported data_type: {data_type}. Must be 'email' or 'text_file'.")
+            raise ValueError(f"Unsupported data_type: {data_type}. Must be 'email', 'text_file', 'xml', or 'marcxml'.")
 
         # General check for fetched data (raw_data_df might be None if logic error, or empty)
         if raw_data_df is None: # Should not happen with current logic but good for robustness
@@ -703,12 +751,13 @@ class RAGPipeline:
         prompt_style = self.config.get("prompting", {}).get("style", "default")
         logger.info(f"Determined prompt style from config: {prompt_style}")
 
-        if self.data_type == "text_file":
+        if self.data_type == "text_file" or self.data_type == "xml" or self.data_type == "marcxml": # Modified condition for MARCXML
             prompt_builder = TextFilePromptBuilder(style=prompt_style)
-            logger.info(f"Using TextFilePromptBuilder with style: {prompt_style}")
+            # Updated log message to be more specific
+            logger.info(f"Using TextFilePromptBuilder for data_type '{self.data_type}' with style: {prompt_style}")
         else:  # Default to EmailPromptBuilder for "email" or if data_type is None or unexpected
             prompt_builder = EmailPromptBuilder(style=prompt_style)
-            logger.info(f"Using EmailPromptBuilder with style: {prompt_style} (data_type: {self.data_type})")
+            logger.info(f"Using EmailPromptBuilder for data_type '{self.data_type}' with style: {prompt_style}")
         
         client = APIClient(config=self.config)
         prompt = prompt_builder.build(query, chunks["context"])
@@ -828,6 +877,8 @@ class RAGPipeline:
         config["paths"] = {
             "chunked_emails": os.path.normpath(task_paths.get_chunk_file(data_type="email")), # Specify data_type
             "chunked_text_files": os.path.normpath(task_paths.get_chunk_file(data_type="text_file")), # Add path for chunked text files
+            "chunked_xml_files": os.path.normpath(task_paths.get_chunk_file(data_type="xml")), # Add path for chunked XML files
+            "chunked_marcxml_files": os.path.normpath(task_paths.get_chunk_file(data_type="marcxml")), # Add path for chunked MARCXML files
             "email_dir": os.path.normpath(task_paths.emails_dir),
             "text_output_dir_raw": os.path.normpath(task_paths.get_raw_text_output_dir()), # Add path for raw text output
             "log_dir": os.path.normpath(task_paths.logs_dir),
@@ -839,6 +890,16 @@ class RAGPipeline:
         if "text_files" in config and "input_dir" in config["text_files"]:
             if "[task_name]" in config["text_files"]["input_dir"]:
                 config["text_files"]["input_dir"] = config["text_files"]["input_dir"].replace("[task_name]", task_name)
+        
+        # Ensure xml_files input_dir placeholder is replaced if it exists
+        if "xml_files" in config and "input_dir" in config["xml_files"]:
+            if "[task_name]" in config["xml_files"]["input_dir"]:
+                config["xml_files"]["input_dir"] = config["xml_files"]["input_dir"].replace("[task_name]", task_name)
+
+        # Ensure marcxml_files input_dir placeholder is replaced if it exists
+        if "marcxml_files" in config and "input_dir" in config["marcxml_files"]:
+            if "[task_name]" in config["marcxml_files"]["input_dir"]:
+                config["marcxml_files"]["input_dir"] = config["marcxml_files"]["input_dir"].replace("[task_name]", task_name)
 
         # Save to disk
         os.makedirs("configs/tasks", exist_ok=True)
@@ -890,6 +951,14 @@ class RAGPipeline:
             ("text_files.input_dir", str),
             ("paths.chunked_text_files", str),
             ("paths.text_output_dir_raw", str),
+            # Added for xml file processing
+            ("xml_files", dict),
+            ("xml_files.input_dir", str),
+            ("paths.chunked_xml_files", str),
+            # Added for marcxml file processing
+            ("marcxml_files", dict),
+            ("marcxml_files.input_dir", str),
+            ("paths.chunked_marcxml_files", str),
         ]
 
         for key_path, expected_type in required:
@@ -1050,7 +1119,7 @@ class RAGPipeline:
         """
         STEP_INFO = {
             "extract_and_chunk": {
-                "desc": "Fetch data (emails or text files) and chunk them into segments. Accepts data_type ('email', 'text_file').",
+                "desc": "Fetch data (emails, text files, XML files, or MARCXML files) and chunk them into segments. Accepts data_type ('email', 'text_file', 'xml', 'marcxml').",
                 "depends_on": []
             },
             "embed_chunks": {
