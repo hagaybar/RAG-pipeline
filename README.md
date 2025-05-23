@@ -17,6 +17,33 @@ This project demonstrates a complete RAG workflow using email content as input:
 
 ---
 
+## 🛠️ Setup and Installation
+
+This section guides you through setting up the project environment.
+
+**Python Version:**
+This project requires Python 3.10 or newer.
+
+**Dependencies:**
+Install the necessary Python packages using the following command:
+```bash
+pip install -r requirements.txt
+```
+
+**Important Note on Email Fetching:**
+The current version of this pipeline relies on `pywin32` to connect to a local Microsoft Outlook client for extracting email data. This functionality is therefore **only available on Windows systems with Microsoft Outlook installed and configured.** Users on other operating systems or those not using Outlook will not be ableable to use the email extraction features. Future development may include alternative email sources.
+
+**API Keys:**
+To use OpenAI models for embedding or answer generation, you need to set your OpenAI API key.
+You can do this by setting an environment variable named `OPEN_AI`:
+```bash
+export OPEN_AI=your-api-key
+```
+Replace `your-api-key` with your actual OpenAI API key.
+Alternatively, you can supply the API key directly when creating the `APIClient` instance in your Python scripts.
+
+---
+
 ## 🧬 Core Components
 
 The RAG pipeline is orchestrated by the `RAGPipeline` class (`scripts/pipeline/rag_pipeline.py`). It manages the entire workflow, from initial data ingestion to final answer generation. The pipeline is highly modular and configurable via YAML files, allowing users to customize its behavior and components.
@@ -45,11 +72,8 @@ The pipeline's modular design allows for individual components to be swapped or 
 ## 🧱 Project Structure
 
 ```
-configs/            # YAML configuration files (general + task-specific)
-data/               # Cleaned emails, chunks, logs, embeddings
-debug/              # Query debug output
-outputs/            # Final generated answers
-scripts/            # Modular pipeline components
+configs/            # YAML configuration files for tasks (e.g., configs/tasks/my_task.yaml)
+scripts/            # All Python scripts for pipeline components and utilities
     api_clients/    # Manages communication with external APIs (e.g., OpenAI, Google)
     chunking/       # Contains logic for splitting text into smaller, manageable chunks
     config/         # Handles loading, validation, and building of configuration files
@@ -61,8 +85,24 @@ scripts/            # Modular pipeline components
     retrieval/      # Handles searching and retrieving relevant chunks based on queries
     ui/             # User interface components (if applicable)
     utils/          # Common utility functions used across the project
+runs/               # Root directory for all task-specific operational data
+    <task_name>/    # Each task gets its own subdirectory within runs/
+        emails/         # Cleaned email data for the task
+        chunks/         # Chunked text data (e.g., chunked_emails.tsv)
+        embeddings/     # FAISS index and metadata for embeddings
+        logs/           # Log files for the task (e.g., task.log, <run_id>.log)
+        runs/           # Data specific to individual pipeline executions (runs)
+            <run_id>/   # Each execution gets a unique run ID
+                answer.txt          # Generated answer for this run
+                query_debug.txt     # Debug information for the query and retrieved context
+                run_metadata.json   # Metadata about this specific run
+        updates/        # Data specific to embedding update operations
+            <update_id>/
+                run_metadata.json   # Metadata about this specific update run
+outputs/            # General output directory
+    answers/        # Final answers, typically one per task when using run_steps() (e.g., outputs/answers/<task_name>.txt)
 tests/              # Test cases and sample inputs
-docs/               # Notes, planning, and requirements
+docs/               # Original location for notes, planning, and requirements.txt (now moved)
 ```
 
 ---
@@ -77,17 +117,13 @@ Use `RAGPipeline.configure_task()` to create a new config dynamically.
 
 ---
 
-## 🔧 Requirements
+## 📋 System Requirements
 
-Install dependencies with:
+This section outlines the system-level requirements and recommendations for running the RAG Email Pipeline.
 
-```bash
-pip install -r docs/requirements.txt
-```
-
-Recommended:
-- Python 3.10+
-- Windows with Outlook installed (for email extraction)
+**Recommended:**
+- **Python:** As mentioned in the "Setup and Installation" section, Python 3.10 or newer is required.
+- **Operating System for Email Extraction:** As noted in the "Setup and Installation" section, Windows with Microsoft Outlook installed and configured is necessary for the email fetching features.
 
 ---
 
@@ -103,18 +139,6 @@ pipeline.run_full_pipeline(query="How can I find deleted POLs in Alma?")
 ```
 
 Or build it step by step using `add_step()` and `run_steps()`.
-
----
-
-## 🔐 API Keys
-
-Set your OpenAI key in an environment variable:
-
-```bash
-export OPEN_AI=your-api-key
-```
-
-Or supply it directly when creating the `APIClient`.
 
 ---
 
