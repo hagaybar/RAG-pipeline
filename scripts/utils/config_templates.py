@@ -30,7 +30,12 @@ def get_default_config(task_name: str) -> dict:
             "prompt_template": "standard_qa"
         },
         "paths": {
-            "chunked_emails": Path("embeddings", "chunked_emails.tsv").as_posix()
+            "chunked_emails": Path("embeddings", "chunked_emails.tsv").as_posix(),
+            "chunked_text_files": "outputs/[task_name]/chunks/chunked_text_files.tsv", # Placeholder, will be replaced by TaskPaths
+            "text_output_dir_raw": "outputs/[task_name]/raw_text_output" # Placeholder for TextFileFetcher's raw output
+        },
+        "text_files": {
+            "input_dir": "data/input_text_files/[task_name]" # Placeholder, user should customize
         },
         "outlook": {
             "account_name": "YOUR_ACCOUNT_NAME",
