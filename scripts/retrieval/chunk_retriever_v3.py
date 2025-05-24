@@ -194,19 +194,43 @@ class ChunkRetriever:
             metadata_idx = faiss_ids[idx]
             row = self.metadata.iloc[metadata_idx]
             label = f"[{rank + 1}]"
-            date_str = row[self.date_column].strftime("%Y-%m-%d") if pd.notna(row[self.date_column]) else "Unknown"
-            label_header = f"{label} (Sender: {row.get('Sender', 'Unknown')}, Date: {date_str})"
-            chunk_text = f"{label_header}\n{row[self.text_column].strip()}"
-            labeled_chunks.append(chunk_text)
+            # Formatting for the context string (label_header) can remain selective for readability if desired,
+            # or be made more generic. For now, keeping it as is.
+            date_str = row.get(self.date_column) # Already converted to datetime objects or NaT
+            date_str_formatted = date_str.strftime("%Y-%m-%d") if pd.notna(date_str) else "Unknown"
+            
+            # Construct a simple header for the context string.
+            # For MARCXML, 'Sender' might not be relevant. Consider more generic terms or check column existence.
+            sender_info = f"Sender: {row.get('Sender', 'N/A')}, " if 'Sender' in row else ""
+            file_path_info = f"Source File: {row.get('File Path', 'N/A')}, " if 'File Path' in row else ""
+            record_id_info = f"Record ID: {row.get('record_id', 'N/A')}, " if 'record_id' in row else ""
 
-            result = {
-                "rank": rank + 1,
-                "index": int(metadata_idx),
-                "score": float(scores[idx]),
-                "text": row[self.text_column],
-                "label": label,
-                "metadata": row.to_dict()
-            }
+            label_header_parts = [label]
+            if sender_info and row.get('Sender') != 'N/A': label_header_parts.append(sender_info.strip(", "))
+            if file_path_info and row.get('File Path') != 'N/A': label_header_parts.append(file_path_info.strip(", "))
+            if record_id_info and row.get('record_id') != 'N/A': label_header_parts.append(record_id_info.strip(", "))
+            if date_str_formatted != "Unknown": label_header_parts.append(f"Date: {date_str_formatted}")
+            
+            label_header = f"({' | '.join(label_header_parts)})"
+            
+            chunk_text_for_context = f"{label} {label_header}\n{row[self.text_column].strip()}"
+            labeled_chunks.append(chunk_text_for_context)
+
+            # The 'result' dictionary now contains all metadata by using row.to_dict()
+            # and then adding/overwriting specific keys like rank, score, and the primary text.
+            result = row.to_dict() # Get all metadata from the row
+            result["rank"] = rank + 1
+            result["original_faiss_index"] = int(metadata_idx) # Keep original index if needed
+            result["score"] = float(scores[idx])
+            # Ensure 'text' key holds the main chunk content, overriding if 'text' was a metadata column name
+            result["text"] = row[self.text_column] 
+            result["label_for_llm_context"] = label # The simple "[rank]" label
+            # 'metadata' key is now redundant if 'result' itself is the full metadata.
+            # However, to maintain compatibility with consumers expecting result['metadata'],
+            # we can keep it, or consumers can adapt to use 'result' directly.
+            # For clarity, let's ensure 'result' is the comprehensive detail.
+            # If a 'metadata' key existed from row.to_dict(), it's fine. If not, 'result' is the metadata.
+
             results.append(result)
 
         openai_context = "\n\n".join(labeled_chunks)
