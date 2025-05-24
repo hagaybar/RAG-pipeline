@@ -98,7 +98,7 @@ class ChunkRetriever:
                                                query embedding is needed. Defaults to None.
         """
         self.index = faiss.read_index(index_path)
-        self.metadata = pd.read_csv(metadata_path, sep="\t")
+        self.metadata = pd.read_csv(metadata_path, sep="	", engine='python', on_bad_lines='warn')
         self.text_column = text_column
         self.date_column = date_column
         self.top_k = top_k
