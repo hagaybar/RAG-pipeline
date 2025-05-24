@@ -18,6 +18,9 @@ from datetime import datetime
 from scripts.data_processing.email.config_loader import ConfigLoader
 from scripts.data_processing.email.email_fetcher import EmailFetcher
 from scripts.data_processing.text.text_fetcher import TextFileFetcher # Added import
+from scripts.data_processing.xml.xml_fetcher import XMLFetcher # Added import for XML
+# Changed from MARCXMLFetcher to MARCXMLProcessor
+from scripts.data_processing.marc_xml.marc_xml_processor import MARCXMLProcessor 
 
 from scripts.chunking.text_chunker_v2 import TextChunker
 from scripts.retrieval.chunk_retriever_v3 import ChunkRetriever
@@ -50,9 +53,10 @@ class RAGPipeline:
       and applies the configuration, setting up paths and instantiating necessary
       components like the appropriate embedder based on the config.
     - **Core RAG Stages**:
-        - `extract_and_chunk()`: Fetches raw data (e.g., emails via `EmailFetcher`),
-          cleans it, and divides it into smaller, manageable text chunks using
-          `TextChunker`.
+        - `extract_and_chunk()`: Fetches raw data (e.g., emails via `EmailFetcher`,
+          text files via `TextFileFetcher`, XML files via `XMLFetcher`,
+          or MARCXML files via `MARCXMLFetcher`), cleans it, and divides it into
+          smaller, manageable text chunks using `TextChunker`.
         - `embed_chunks()` / `embed_chunks_batch()`: Takes the processed chunks and
           generates vector embeddings using the configured `GeneralPurposeEmbedder`.
           Supports both regular and batch embedding modes.
@@ -271,12 +275,14 @@ class RAGPipeline:
         Based on the `data_type` parameter:
         - If "email", uses `EmailFetcher` to retrieve emails.
         - If "text_file", uses `TextFileFetcher` to retrieve text files.
+        - If "xml", uses `XMLFetcher` to retrieve and parse XML files.
+        - If "marcxml", uses `MARCXMLFetcher` to retrieve and parse MARCXML files.
         The fetched data is then processed by `TextChunker` and saved to a TSV file.
         The paths and configurations are determined by `self.config`.
 
         Args:
             data_type (str, optional): The type of data to process.
-                                       Can be "email" or "text_file". Defaults to "email".
+                                       Can be "email", "text_file", "xml", or "marcxml". Defaults to "email".
 
         Returns:
             str: The file path to the output TSV file containing the chunked data.
@@ -345,9 +351,86 @@ class RAGPipeline:
                 self.logger.warning(f"No text files found or processed by TextFileFetcher. Resulting chunk file will be empty.")
             else:
                 self.logger.info(f"Fetched {len(raw_data_df)} {source_data_description}.")
-        else:
+
+        elif data_type == "xml":
+            self.logger.info("Fetching XML files...")
+            # Validate required config keys for xml
+            if "xml_files" not in self.config or "input_dir" not in self.config["xml_files"]:
+                self.logger.error("Missing 'xml_files.input_dir' in configuration for XMLFetcher.")
+                raise KeyError("Missing 'xml_files.input_dir' in configuration for XMLFetcher.")
+            if "paths" not in self.config or "chunked_xml_files" not in self.config["paths"]:
+                self.logger.error("Missing 'paths.chunked_xml_files' in configuration.")
+                raise KeyError("Missing 'paths.chunked_xml_files' in configuration.")
+
+            fetcher = XMLFetcher(input_dir=self.config["xml_files"]["input_dir"])
+            raw_data_df = fetcher.fetch_xml_files() # XMLFetcher returns a DataFrame
+            content_column_name = "Cleaned Text" # This is the column XMLFetcher produces
+            output_file_config_key = "chunked_xml_files"
+            source_data_description = "XML file entries"
+            # XMLFetcher returns an empty DataFrame with columns if no files are found.
+            # This is acceptable, and it will result in an empty chunked file.
+            if raw_data_df.empty:
+                self.logger.warning(f"No XML files found or processed by XMLFetcher. Resulting chunk file will be empty.")
+            else:
+                self.logger.info(f"Fetched {len(raw_data_df)} {source_data_description}.")
+
+        elif data_type == "marcxml":
+            self.logger.info("Fetching MARCXML files...")
+            # Validate required config keys for marcxml
+            if "marcxml_files" not in self.config or "input_dir" not in self.config["marcxml_files"]:
+                self.logger.error("Missing 'marcxml_files.input_dir' in configuration for MARCXMLFetcher.")
+                raise KeyError("Missing 'marcxml_files.input_dir' in configuration for MARCXMLFetcher.")
+            if "paths" not in self.config or "chunked_marcxml_files" not in self.config["paths"]:
+                self.logger.error("Missing 'paths.chunked_marcxml_files' in configuration.")
+                raise KeyError("Missing 'paths.chunked_marcxml_files' in configuration.")
+
+            # Use MARCXMLProcessor instead of MARCXMLFetcher
+            processor = MARCXMLProcessor() # Assuming default NER model, can be configured if needed
+            raw_data_df = processor.process_directory(input_dir=self.config["marcxml_files"]["input_dir"])
+            
+            content_column_name = "text_for_embedding" # Key column from MARCXMLProcessor
+            output_file_config_key = "chunked_marcxml_files"
+            source_data_description = "MARCXML processed records"
+            
+            if raw_data_df.empty:
+                self.logger.warning(f"No MARCXML records processed by MARCXMLProcessor. Resulting chunk file will be empty.")
+                # For MARCXML with "record-as-chunk", df_chunks is raw_data_df with 'text_for_embedding' renamed
+                # If raw_data_df is empty, create an empty df_chunks with expected columns
+                # Expected columns for MARCXML include 'Chunk' and all other metadata from MARCXMLProcessor
+                # This needs to be robust: get columns from an empty processor output or define them.
+                # For simplicity, if raw_data_df is empty, df_chunks will also be empty with the same columns.
+                # The rename step later will handle the 'Chunk' column.
+                df_chunks = pd.DataFrame(columns=raw_data_df.columns.tolist() + ['Chunk'] if 'Chunk' not in raw_data_df.columns else raw_data_df.columns.tolist())
+
+            else:
+                self.logger.info(f"Processed {len(raw_data_df)} MARCXML records into enriched data by MARCXMLProcessor.")
+                # For "record-as-chunk" strategy, 'text_for_embedding' is the chunk.
+                # Rename 'text_for_embedding' to 'Chunk' and keep other metadata columns.
+                if content_column_name not in raw_data_df.columns:
+                    self.logger.error(f"'{content_column_name}' column not found in MARCXMLProcessor output. Cannot proceed.")
+                    # Create an empty df_chunks with at least a 'Chunk' column to avoid downstream errors
+                    df_chunks = pd.DataFrame(columns=['Chunk']) # Add other expected metadata cols if known
+                else:
+                    df_chunks = raw_data_df.rename(columns={content_column_name: "Chunk"})
+                
+                # Ensure 'Chunk' column is present after potential rename
+                if "Chunk" not in df_chunks.columns:
+                     self.logger.error(f"'Chunk' column is missing after processing MARCXML data. This should not happen.")
+                     # Fallback: if 'Chunk' is still missing, create it from 'text_for_embedding' if that somehow wasn't renamed
+                     if content_column_name in df_chunks.columns: # Should not occur if rename logic is correct
+                         df_chunks["Chunk"] = df_chunks[content_column_name]
+                     else: # If both are missing, then it's an issue, create empty 'Chunk'
+                         df_chunks["Chunk"] = pd.Series(dtype='str')
+
+
+            # For MARCXML, the TextChunker is skipped. df_chunks is already prepared.
+            # The general chunking logic below will be bypassed for 'marcxml'.
+            # The df_chunks created above will be saved directly.
+            # This requires adjusting the flow below.
+
+        else: # For email, text_file, xml (non-MARCXML)
             self.logger.error(f"Unsupported data_type: {data_type}")
-            raise ValueError(f"Unsupported data_type: {data_type}. Must be 'email' or 'text_file'.")
+            raise ValueError(f"Unsupported data_type: {data_type}. Must be 'email', 'text_file', 'xml', or 'marcxml'.")
 
         # General check for fetched data (raw_data_df might be None if logic error, or empty)
         if raw_data_df is None: # Should not happen with current logic but good for robustness
@@ -357,7 +440,7 @@ class RAGPipeline:
         self.data_type = data_type # Set the pipeline's data_type attribute
         self.logger.info(f"Pipeline data_type set to: {self.data_type}")
 
-        # Step 3: Chunk based on the identified content column
+        # Step 3: Prepare output path and log preview
         try:
             output_file = self.config["paths"][output_file_config_key]
         except KeyError:
@@ -367,67 +450,77 @@ class RAGPipeline:
 
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-        self.logger.info(f"Raw {data_type} data preview (first 3 rows):")
-        print(f"📦 Raw {data_type} data preview:") # Using f-string for print
-        print(raw_data_df.head(3).to_string())
-
-        chunk_cfg = self.config["chunking"]
-        chunker = TextChunker(
-            max_chunk_size=chunk_cfg.get("max_chunk_size", 500),
-            overlap=chunk_cfg.get("overlap", 50),
-            min_chunk_size=chunk_cfg.get("min_chunk_size", 150),
-            similarity_threshold=chunk_cfg.get("similarity_threshold", 0.8),
-            language_model=chunk_cfg.get("language_model", "en_core_web_sm"),
-            embedding_model=chunk_cfg.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
-        )
-
-        df = pd.DataFrame(raw_data_df) # Ensure it's a DataFrame
-
-        # Ensure the content column exists, even if the DataFrame is empty, to prevent KeyErrors
-        if content_column_name not in df.columns:
-            if df.empty: # If df is empty (e.g. no text files found), add the column
-                df[content_column_name] = pd.Series(dtype='str')
-                self.logger.warning(f"Added missing content column '{content_column_name}' to empty DataFrame for '{data_type}'.")
-            else: # If df is not empty but column is missing, this is an issue
-                self.logger.error(f"Content column '{content_column_name}' not found in the fetched data for {data_type}.")
-                raise KeyError(f"Content column '{content_column_name}' not found in the fetched data for {data_type}.")
-        
-        # Apply chunking
-        if df.empty or df[content_column_name].isnull().all():
-            self.logger.warning(f"No content to chunk for data_type '{data_type}' (DataFrame is empty or content column is all null). Chunk file will be empty or have no actual chunks.")
-            # Create an empty DataFrame with 'Chunk' column and preserve other metadata columns
-            # All original columns are preserved, and 'Chunk' is added.
-            # If df was empty, df_chunks will be empty with columns: original_cols + ['Chunk']
-            # If df had rows but no content to chunk, rows will be duplicated with Chunk=NaN, then dropped by explode if Chunks list is empty.
-            # A more robust way for empty content is to create an empty df_chunks with correct columns.
-            
-            # Define columns for the empty chunked DataFrame
-            # These should be the original columns plus 'Chunk'
-            final_chunk_cols = df.columns.tolist()
-            if 'Chunk' not in final_chunk_cols: # Should be added by rename if explode happens
-                 final_chunk_cols.append('Chunk')
-            # Remove 'Chunks' if it was added temporarily
-            if 'Chunks' in final_chunk_cols:
-                final_chunk_cols.remove('Chunks')
-
-            df_chunks = pd.DataFrame(columns=final_chunk_cols)
-            
+        # For non-MARCXML types, raw_data_df is used for preview. For MARCXML, df_chunks is already the processed data.
+        preview_df = raw_data_df if data_type != "marcxml" else df_chunks
+        if preview_df is not None and not preview_df.empty:
+            self.logger.info(f"Data preview for {data_type} (first 3 rows before final chunking if applicable):")
+            print(f"📦 Data preview for {data_type} (first 3 rows):")
+            print(preview_df.head(3).to_string())
         else:
-            df["Chunks"] = df[content_column_name].apply(lambda x: chunker.chunk_text(str(x)))
-            # Explode will keep all original columns from `df` associated with each new 'Chunk' row.
-            df_chunks = df.explode("Chunks").reset_index(drop=True)
-            # Rename the 'Chunks' column (which now contains individual chunk strings) to 'Chunk'
-            df_chunks = df_chunks.rename(columns={"Chunks": "Chunk"})
-            # Drop rows where 'Chunk' is NaN or empty string if any were produced by chunk_text (should not happen with current chunker)
-            df_chunks = df_chunks.dropna(subset=['Chunk'])
-            df_chunks = df_chunks[df_chunks['Chunk'].str.strip() != '']
+            self.logger.info(f"No data to preview for {data_type}.")
 
 
+        # Step 4: Chunking (if not marcxml) or final prep
+        if data_type == "marcxml":
+            # df_chunks is already prepared for MARCXML (record-as-chunk)
+            # Ensure 'Chunk' column exists and content_column_name is not present if it was renamed
+            if "Chunk" not in df_chunks.columns:
+                self.logger.error("CRITICAL: 'Chunk' column missing for MARCXML data before saving.")
+                # Attempt to recover if original column still exists (should not happen with correct logic above)
+                if content_column_name in df_chunks.columns:
+                     df_chunks["Chunk"] = df_chunks[content_column_name]
+                     df_chunks = df_chunks.drop(columns=[content_column_name], errors='ignore')
+                else: # If 'Chunk' is missing and original content_column_name is also gone, create empty.
+                     df_chunks["Chunk"] = pd.Series(dtype='str')
+
+            if content_column_name in df_chunks.columns and content_column_name != "Chunk":
+                df_chunks = df_chunks.drop(columns=[content_column_name], errors='ignore')
+            
+            # If df_chunks was created as empty with a 'Chunk' column, it's fine.
+            # If it was populated and 'Chunk' column is there, it's also fine.
+            
+        else: # Apply TextChunker for other data types (email, text_file, xml)
+            df = pd.DataFrame(raw_data_df) # Ensure it's a DataFrame
+
+            # Ensure the content column exists, even if the DataFrame is empty
+            if content_column_name not in df.columns:
+                if df.empty: 
+                    df[content_column_name] = pd.Series(dtype='str')
+                    self.logger.warning(f"Added missing content column '{content_column_name}' to empty DataFrame for '{data_type}'.")
+                else: 
+                    self.logger.error(f"Content column '{content_column_name}' not found in the fetched data for {data_type}.")
+                    raise KeyError(f"Content column '{content_column_name}' not found in the fetched data for {data_type}.")
+            
+            if df.empty or df[content_column_name].isnull().all():
+                self.logger.warning(f"No content to chunk for data_type '{data_type}'. Chunk file will be empty.")
+                final_chunk_cols = df.columns.tolist()
+                if 'Chunk' not in final_chunk_cols: final_chunk_cols.append('Chunk')
+                if 'Chunks' in final_chunk_cols: final_chunk_cols.remove('Chunks')
+                df_chunks = pd.DataFrame(columns=final_chunk_cols)
+            else:
+                chunk_cfg = self.config["chunking"]
+                chunker = TextChunker(
+                    max_chunk_size=chunk_cfg.get("max_chunk_size", 500),
+                    overlap=chunk_cfg.get("overlap", 50),
+                    min_chunk_size=chunk_cfg.get("min_chunk_size", 150),
+                    similarity_threshold=chunk_cfg.get("similarity_threshold", 0.8),
+                    language_model=chunk_cfg.get("language_model", "en_core_web_sm"),
+                    embedding_model=chunk_cfg.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
+                )
+                df["Chunks"] = df[content_column_name].apply(lambda x: chunker.chunk_text(str(x)))
+                df_chunks = df.explode("Chunks").reset_index(drop=True)
+                df_chunks = df_chunks.rename(columns={"Chunks": "Chunk"})
+                df_chunks = df_chunks.dropna(subset=['Chunk'])
+                df_chunks = df_chunks[df_chunks['Chunk'].str.strip() != '']
+        
+        # Step 5: Save the prepared df_chunks to CSV
+        # For MARCXML, df_chunks contains all metadata columns + 'Chunk' (formerly 'text_for_embedding')
+        # For other types, df_chunks contains original metadata + 'Chunk' (from TextChunker)
         df_chunks.to_csv(output_file, sep="\t", index=False)
 
-        self.chunked_file = output_file # This should point to the correct chunked file path for subsequent embedding
-        self.logger.info(f"Chunked {data_type} data saved to: {output_file}. Number of chunks: {len(df_chunks)}")
-        print(f"✅ Chunked {data_type} data saved to: {output_file}. Number of chunks: {len(df_chunks)}")
+        self.chunked_file = output_file 
+        self.logger.info(f"Final processed data for {data_type} saved to: {output_file}. Number of rows/chunks: {len(df_chunks)}")
+        print(f"✅ Final processed data for {data_type} saved to: {output_file}. Number of rows/chunks: {len(df_chunks)}")
         return output_file
 
     def embed_chunks(self) -> None:
@@ -703,15 +796,17 @@ class RAGPipeline:
         prompt_style = self.config.get("prompting", {}).get("style", "default")
         logger.info(f"Determined prompt style from config: {prompt_style}")
 
-        if self.data_type == "text_file":
+        if self.data_type == "text_file" or self.data_type == "xml" or self.data_type == "marcxml": # Modified condition for MARCXML
             prompt_builder = TextFilePromptBuilder(style=prompt_style)
-            logger.info(f"Using TextFilePromptBuilder with style: {prompt_style}")
+            # Updated log message to be more specific
+            logger.info(f"Using TextFilePromptBuilder for data_type '{self.data_type}' with style: {prompt_style}")
         else:  # Default to EmailPromptBuilder for "email" or if data_type is None or unexpected
             prompt_builder = EmailPromptBuilder(style=prompt_style)
-            logger.info(f"Using EmailPromptBuilder with style: {prompt_style} (data_type: {self.data_type})")
+            logger.info(f"Using EmailPromptBuilder for data_type '{self.data_type}' with style: {prompt_style}")
         
         client = APIClient(config=self.config)
-        prompt = prompt_builder.build(query, chunks["context"])
+        # Pass the detailed 'top_chunks' list to the prompt builder
+        prompt = prompt_builder.build(query, chunks["top_chunks"])
 
         logger.info("Sending prompt to OpenAI...")
         answer = client.send_completion_request(prompt)
@@ -828,6 +923,8 @@ class RAGPipeline:
         config["paths"] = {
             "chunked_emails": os.path.normpath(task_paths.get_chunk_file(data_type="email")), # Specify data_type
             "chunked_text_files": os.path.normpath(task_paths.get_chunk_file(data_type="text_file")), # Add path for chunked text files
+            "chunked_xml_files": os.path.normpath(task_paths.get_chunk_file(data_type="xml")), # Add path for chunked XML files
+            "chunked_marcxml_files": os.path.normpath(task_paths.get_chunk_file(data_type="marcxml")), # Add path for chunked MARCXML files
             "email_dir": os.path.normpath(task_paths.emails_dir),
             "text_output_dir_raw": os.path.normpath(task_paths.get_raw_text_output_dir()), # Add path for raw text output
             "log_dir": os.path.normpath(task_paths.logs_dir),
@@ -839,6 +936,16 @@ class RAGPipeline:
         if "text_files" in config and "input_dir" in config["text_files"]:
             if "[task_name]" in config["text_files"]["input_dir"]:
                 config["text_files"]["input_dir"] = config["text_files"]["input_dir"].replace("[task_name]", task_name)
+        
+        # Ensure xml_files input_dir placeholder is replaced if it exists
+        if "xml_files" in config and "input_dir" in config["xml_files"]:
+            if "[task_name]" in config["xml_files"]["input_dir"]:
+                config["xml_files"]["input_dir"] = config["xml_files"]["input_dir"].replace("[task_name]", task_name)
+
+        # Ensure marcxml_files input_dir placeholder is replaced if it exists
+        if "marcxml_files" in config and "input_dir" in config["marcxml_files"]:
+            if "[task_name]" in config["marcxml_files"]["input_dir"]:
+                config["marcxml_files"]["input_dir"] = config["marcxml_files"]["input_dir"].replace("[task_name]", task_name)
 
         # Save to disk
         os.makedirs("configs/tasks", exist_ok=True)
@@ -890,6 +997,14 @@ class RAGPipeline:
             ("text_files.input_dir", str),
             ("paths.chunked_text_files", str),
             ("paths.text_output_dir_raw", str),
+            # Added for xml file processing
+            ("xml_files", dict),
+            ("xml_files.input_dir", str),
+            ("paths.chunked_xml_files", str),
+            # Added for marcxml file processing
+            ("marcxml_files", dict),
+            ("marcxml_files.input_dir", str),
+            ("paths.chunked_marcxml_files", str),
         ]
 
         for key_path, expected_type in required:
@@ -1050,7 +1165,7 @@ class RAGPipeline:
         """
         STEP_INFO = {
             "extract_and_chunk": {
-                "desc": "Fetch data (emails or text files) and chunk them into segments. Accepts data_type ('email', 'text_file').",
+                "desc": "Fetch data (emails, text files, XML files, or MARCXML files) and chunk them into segments. Accepts data_type ('email', 'text_file', 'xml', 'marcxml').",
                 "depends_on": []
             },
             "embed_chunks": {
