@@ -17,10 +17,11 @@ from datetime import datetime
 
 from scripts.data_processing.email.config_loader import ConfigLoader
 from scripts.data_processing.email.email_fetcher import EmailFetcher
+from scripts.data_processing.text.text_fetcher import TextFileFetcher # Added import
 
 from scripts.chunking.text_chunker_v2 import TextChunker
 from scripts.retrieval.chunk_retriever_v3 import ChunkRetriever
-from scripts.prompting.prompt_builder import EmailPromptBuilder
+from scripts.prompting.prompt_builder import EmailPromptBuilder, TextFilePromptBuilder # Modified import
 from scripts.api_clients.openai.gptApiClient import APIClient
 
 
@@ -121,6 +122,7 @@ class RAGPipeline:
         self.steps = []  # list of (step_name, kwargs)
         self.query = None
         self.last_chunks = None  #
+        self.data_type = None # Added data_type attribute
 
         if config_path:
             self.config_path = config_path
@@ -262,47 +264,112 @@ class RAGPipeline:
         else:
             raise ValueError(f"Unsupported embedding mode: {mode}")
 
-    def extract_and_chunk(self) -> str:
+    def extract_and_chunk(self, data_type: str = "email") -> str:
         """
-        Orchestrates the fetching of emails and their subsequent chunking.
+        Orchestrates the fetching of data (emails or text files) and its subsequent chunking.
 
-        This method uses `EmailFetcher` to retrieve emails based on the 'outlook'
-        section of the loaded configuration. The fetched email bodies are then
-        processed by `TextChunker`, configured via the 'chunking' section of
-        the config, to produce smaller text segments. The resulting chunked
-        data is saved to a TSV file, the path to which is also determined by
-        the configuration.
+        Based on the `data_type` parameter:
+        - If "email", uses `EmailFetcher` to retrieve emails.
+        - If "text_file", uses `TextFileFetcher` to retrieve text files.
+        The fetched data is then processed by `TextChunker` and saved to a TSV file.
+        The paths and configurations are determined by `self.config`.
 
         Args:
-            None (relies on `self.config`).
+            data_type (str, optional): The type of data to process.
+                                       Can be "email" or "text_file". Defaults to "email".
 
         Returns:
-            str: The file path to the output TSV file containing the chunked text.
+            str: The file path to the output TSV file containing the chunked data.
 
         Raises:
-            ValueError: If `EmailFetcher` returns no emails (e.g., empty DataFrame).
+            ValueError: If no data is fetched (e.g., empty DataFrame for emails),
+                        or if `data_type` is unsupported.
+            KeyError: If required configuration keys for the chosen `data_type` are missing.
         """
-        self.logger.info("Starting email extraction and chunking...")
+        self.logger.info(f"Starting data extraction and chunking for data_type: {data_type}...")
         self.ensure_config_loaded()
 
-        # ✅ Step 1: Fetch emails using the EmailFetcher class
-        fetcher = EmailFetcher(self.config)
-        # tsv_path = fetcher.fetch_emails_from_folder(return_dataframe=False)
-        raw_emails_df = fetcher.fetch_emails_from_folder(return_dataframe=True)
+        raw_data_df: Optional[pd.DataFrame] = None
+        content_column_name: str = ""
+        output_file_config_key: str = ""
+        source_data_description: str = ""
 
+        if data_type == "email":
+            self.logger.info("Fetching emails...")
+            # Validate required config keys for email
+            if "outlook" not in self.config:
+                self.logger.error("Missing 'outlook' configuration for EmailFetcher.")
+                raise KeyError("Missing 'outlook' configuration for EmailFetcher.")
+            if "paths" not in self.config or "chunked_emails" not in self.config["paths"]:
+                self.logger.error("Missing 'paths.chunked_emails' in configuration.")
+                raise KeyError("Missing 'paths.chunked_emails' in configuration.")
 
-        # ✅ Step 2: check if the DataFrame is empty
-        if raw_emails_df.empty or raw_emails_df.columns.empty:
-            raise ValueError("❌ No emails fetched — DataFrame is empty. Check Outlook folder path or email filtering.")
+            fetcher = EmailFetcher(self.config)
+            raw_data_df = fetcher.fetch_emails_from_folder(return_dataframe=True)
+            content_column_name = "Cleaned Body"
+            output_file_config_key = "chunked_emails"
+            source_data_description = "emails"
+            if raw_data_df.empty or raw_data_df.columns.empty: # Check specifically for emails if it must not be empty
+                self.logger.error("No emails fetched — DataFrame is empty.")
+                raise ValueError("❌ No emails fetched — DataFrame is empty. Check Outlook folder path or email filtering.")
+            self.logger.info(f"Fetched {len(raw_data_df)} {source_data_description}.")
 
+        elif data_type == "text_file":
+            self.logger.info("Fetching text files...")
+            # Validate required config keys for text_file
+            if "text_files" not in self.config or "input_dir" not in self.config["text_files"]:
+                self.logger.error("Missing 'text_files.input_dir' in configuration for TextFileFetcher.")
+                raise KeyError("Missing 'text_files.input_dir' in configuration for TextFileFetcher.")
+            if "paths" not in self.config or "chunked_text_files" not in self.config["paths"]: # New config key for chunked text files
+                self.logger.error("Missing 'paths.chunked_text_files' in configuration.")
+                raise KeyError("Missing 'paths.chunked_text_files' in configuration.")
 
-        # ✅ Step 3: Chunk based on "Cleaned Body" (assumes it's already cleaned)
-        output_file = self.config["paths"]["chunked_emails"]
+            # TextFileFetcher expects 'text_output_dir' in its config['paths']
+            # Provide a default if not specified in main config under paths.text_output_dir_raw
+            text_fetcher_output_raw_dir = self.config["paths"].get("text_output_dir_raw", "outputs/raw_text_data")
+            
+            text_fetcher_config = {
+                "text_files": self.config["text_files"],
+                "paths": {"text_output_dir": text_fetcher_output_raw_dir }
+            }
+            fetcher = TextFileFetcher(config=text_fetcher_config)
+            # save=False for fetch_text_files as we only need the DataFrame for chunking here.
+            # TextFileFetcher itself can save its own processed files if its 'save' arg is True.
+            raw_data_df = fetcher.fetch_text_files(return_dataframe=True, save=False)
+            content_column_name = "Cleaned Text" # This is the column TextFileFetcher produces
+            output_file_config_key = "chunked_text_files" # New key for chunked text files
+            source_data_description = "text file entries"
+            # TextFileFetcher returns an empty DataFrame with columns if no files are found.
+            # This is acceptable, and it will result in an empty chunked file.
+            if raw_data_df.empty:
+                self.logger.warning(f"No text files found or processed by TextFileFetcher. Resulting chunk file will be empty.")
+            else:
+                self.logger.info(f"Fetched {len(raw_data_df)} {source_data_description}.")
+        else:
+            self.logger.error(f"Unsupported data_type: {data_type}")
+            raise ValueError(f"Unsupported data_type: {data_type}. Must be 'email' or 'text_file'.")
+
+        # General check for fetched data (raw_data_df might be None if logic error, or empty)
+        if raw_data_df is None: # Should not happen with current logic but good for robustness
+             self.logger.error(f"raw_data_df is None after fetch step for data_type '{data_type}'. This indicates a logic error.")
+             raise ValueError(f"Failed to fetch data for data_type '{data_type}'.")
+        
+        self.data_type = data_type # Set the pipeline's data_type attribute
+        self.logger.info(f"Pipeline data_type set to: {self.data_type}")
+
+        # Step 3: Chunk based on the identified content column
+        try:
+            output_file = self.config["paths"][output_file_config_key]
+        except KeyError:
+            err_msg = f"Missing configuration for output file path: 'paths.{output_file_config_key}'"
+            self.logger.error(err_msg)
+            raise KeyError(err_msg)
+
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-        print("📦 raw_emails preview:")
-        print(raw_emails_df.head(3).to_string())
-
+        self.logger.info(f"Raw {data_type} data preview (first 3 rows):")
+        print(f"📦 Raw {data_type} data preview:") # Using f-string for print
+        print(raw_data_df.head(3).to_string())
 
         chunk_cfg = self.config["chunking"]
         chunker = TextChunker(
@@ -314,14 +381,53 @@ class RAGPipeline:
             embedding_model=chunk_cfg.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
         )
 
-        df = pd.DataFrame(raw_emails_df)
-        df["Chunks"] = df["Cleaned Body"].apply(lambda x: chunker.chunk_text(str(x)))
-        df_chunks = df.explode("Chunks").reset_index(drop=True).rename(columns={"Chunks": "Chunk"})
+        df = pd.DataFrame(raw_data_df) # Ensure it's a DataFrame
+
+        # Ensure the content column exists, even if the DataFrame is empty, to prevent KeyErrors
+        if content_column_name not in df.columns:
+            if df.empty: # If df is empty (e.g. no text files found), add the column
+                df[content_column_name] = pd.Series(dtype='str')
+                self.logger.warning(f"Added missing content column '{content_column_name}' to empty DataFrame for '{data_type}'.")
+            else: # If df is not empty but column is missing, this is an issue
+                self.logger.error(f"Content column '{content_column_name}' not found in the fetched data for {data_type}.")
+                raise KeyError(f"Content column '{content_column_name}' not found in the fetched data for {data_type}.")
+        
+        # Apply chunking
+        if df.empty or df[content_column_name].isnull().all():
+            self.logger.warning(f"No content to chunk for data_type '{data_type}' (DataFrame is empty or content column is all null). Chunk file will be empty or have no actual chunks.")
+            # Create an empty DataFrame with 'Chunk' column and preserve other metadata columns
+            # All original columns are preserved, and 'Chunk' is added.
+            # If df was empty, df_chunks will be empty with columns: original_cols + ['Chunk']
+            # If df had rows but no content to chunk, rows will be duplicated with Chunk=NaN, then dropped by explode if Chunks list is empty.
+            # A more robust way for empty content is to create an empty df_chunks with correct columns.
+            
+            # Define columns for the empty chunked DataFrame
+            # These should be the original columns plus 'Chunk'
+            final_chunk_cols = df.columns.tolist()
+            if 'Chunk' not in final_chunk_cols: # Should be added by rename if explode happens
+                 final_chunk_cols.append('Chunk')
+            # Remove 'Chunks' if it was added temporarily
+            if 'Chunks' in final_chunk_cols:
+                final_chunk_cols.remove('Chunks')
+
+            df_chunks = pd.DataFrame(columns=final_chunk_cols)
+            
+        else:
+            df["Chunks"] = df[content_column_name].apply(lambda x: chunker.chunk_text(str(x)))
+            # Explode will keep all original columns from `df` associated with each new 'Chunk' row.
+            df_chunks = df.explode("Chunks").reset_index(drop=True)
+            # Rename the 'Chunks' column (which now contains individual chunk strings) to 'Chunk'
+            df_chunks = df_chunks.rename(columns={"Chunks": "Chunk"})
+            # Drop rows where 'Chunk' is NaN or empty string if any were produced by chunk_text (should not happen with current chunker)
+            df_chunks = df_chunks.dropna(subset=['Chunk'])
+            df_chunks = df_chunks[df_chunks['Chunk'].str.strip() != '']
+
+
         df_chunks.to_csv(output_file, sep="\t", index=False)
 
-        self.chunked_file = output_file
-        print(f"✅ Chunked email data saved to: {output_file}")
-        self.logger.info(f"Chunked email data saved to: {output_file}")
+        self.chunked_file = output_file # This should point to the correct chunked file path for subsequent embedding
+        self.logger.info(f"Chunked {data_type} data saved to: {output_file}. Number of chunks: {len(df_chunks)}")
+        print(f"✅ Chunked {data_type} data saved to: {output_file}. Number of chunks: {len(df_chunks)}")
         return output_file
 
     def embed_chunks(self) -> None:
@@ -594,7 +700,16 @@ class RAGPipeline:
             raise ValueError("No chunks provided. Ensure retrieve() ran before generate_answer().")
 
         logger.info("Building prompt...")
-        prompt_builder = EmailPromptBuilder(style="references")
+        prompt_style = self.config.get("prompting", {}).get("style", "default")
+        logger.info(f"Determined prompt style from config: {prompt_style}")
+
+        if self.data_type == "text_file":
+            prompt_builder = TextFilePromptBuilder(style=prompt_style)
+            logger.info(f"Using TextFilePromptBuilder with style: {prompt_style}")
+        else:  # Default to EmailPromptBuilder for "email" or if data_type is None or unexpected
+            prompt_builder = EmailPromptBuilder(style=prompt_style)
+            logger.info(f"Using EmailPromptBuilder with style: {prompt_style} (data_type: {self.data_type})")
+        
         client = APIClient(config=self.config)
         prompt = prompt_builder.build(query, chunks["context"])
 
@@ -664,7 +779,15 @@ class RAGPipeline:
             str: The final generated and formatted answer from the pipeline.
         """
         self.ensure_config_loaded()
-        self.extract_and_chunk()
+        # Example: running with default "email"
+        # self.extract_and_chunk() 
+        # To run with text_files, you would call:
+        # self.extract_and_chunk(data_type="text_file")
+        # For a generic full pipeline, it needs to be decided or configured which data_type to use.
+        # For now, let's assume "email" is the default for run_full_pipeline
+        # Or, this method could also take data_type as a parameter.
+        self.logger.info("Running full pipeline with default data_type 'email'.")
+        self.extract_and_chunk(data_type="email") # Defaulting to email for now. User can override by calling steps manually.
         self.embed_chunks()
         chunks = self.retrieve(query)
         answer = self.generate_answer(query, chunks)
@@ -703,12 +826,19 @@ class RAGPipeline:
 
         # Inject paths into config
         config["paths"] = {
-            "chunked_emails": os.path.normpath(task_paths.get_chunk_file()),
+            "chunked_emails": os.path.normpath(task_paths.get_chunk_file(data_type="email")), # Specify data_type
+            "chunked_text_files": os.path.normpath(task_paths.get_chunk_file(data_type="text_file")), # Add path for chunked text files
             "email_dir": os.path.normpath(task_paths.emails_dir),
+            "text_output_dir_raw": os.path.normpath(task_paths.get_raw_text_output_dir()), # Add path for raw text output
             "log_dir": os.path.normpath(task_paths.logs_dir),
-            "output_dir": os.path.normpath(task_paths.embeddings_dir),
+            "output_dir": os.path.normpath(task_paths.embeddings_dir), # This is general output, also used by embeddings
         }
         config["embedding"]["output_dir"] = os.path.normpath(task_paths.embeddings_dir)
+
+        # Ensure text_files input_dir placeholder is replaced if it exists
+        if "text_files" in config and "input_dir" in config["text_files"]:
+            if "[task_name]" in config["text_files"]["input_dir"]:
+                config["text_files"]["input_dir"] = config["text_files"]["input_dir"].replace("[task_name]", task_name)
 
         # Save to disk
         os.makedirs("configs/tasks", exist_ok=True)
@@ -755,6 +885,11 @@ class RAGPipeline:
             ("outlook.account_name", str),
             ("outlook.folder_path", str),
             ("outlook.days_to_fetch", int),
+            # Added for text file processing
+            ("text_files", dict),
+            ("text_files.input_dir", str),
+            ("paths.chunked_text_files", str),
+            ("paths.text_output_dir_raw", str),
         ]
 
         for key_path, expected_type in required:
@@ -915,7 +1050,7 @@ class RAGPipeline:
         """
         STEP_INFO = {
             "extract_and_chunk": {
-                "desc": "Fetch emails from Outlook and chunk them into segments.",
+                "desc": "Fetch data (emails or text files) and chunk them into segments. Accepts data_type ('email', 'text_file').",
                 "depends_on": []
             },
             "embed_chunks": {

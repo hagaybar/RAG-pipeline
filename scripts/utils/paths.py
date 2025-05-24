@@ -52,11 +52,12 @@ class TaskPaths:
 
         # Standard subfolders
         self.emails_dir = os.path.join(self.task_root, "emails")
-        self.chunks_dir = os.path.join(self.task_root, "chunks")
+        self.chunks_dir = os.path.join(self.task_root, "chunks") 
         self.embeddings_dir = os.path.join(self.task_root, "embeddings")
         self.logs_dir = os.path.join(self.task_root, "logs")
         self.runs_dir = os.path.join(self.task_root, "runs")
         self.updates_dir = os.path.join(self.task_root, "updates")
+        self.raw_text_output_dir = os.path.join(self.task_root, "raw_text_output") # Added for TextFileFetcher raw output
 
         # Ensure directory structure exists
         self._create_dirs()
@@ -80,19 +81,43 @@ class TaskPaths:
         os.makedirs(self.logs_dir, exist_ok=True)
         os.makedirs(self.runs_dir, exist_ok=True)
         os.makedirs(self.updates_dir, exist_ok=True)
+        os.makedirs(self.raw_text_output_dir, exist_ok=True) # Ensure creation
 
-    def get_chunk_file(self) -> str:
+    def get_chunk_file(self, data_type: str = "email") -> str:
         """
-        Returns the full path to the standard TSV file for storing chunked email data.
+        Returns the full path to the standard TSV file for storing chunked data.
+
+        The specific filename depends on the data_type.
+        - "email": "chunked_emails.tsv"
+        - "text_file": "chunked_text_files.tsv"
 
         Args:
-            None.
+            data_type (str, optional): The type of data. Defaults to "email".
+                                       Supported values: "email", "text_file".
 
         Returns:
-            str: The absolute path to "chunked_emails.tsv" within the task's
+            str: The absolute path to the chunked data file within the task's
                  chunks directory (`self.chunks_dir`).
+        
+        Raises:
+            ValueError: If the data_type is unsupported.
         """
-        return os.path.join(self.chunks_dir, "chunked_emails.tsv")
+        if data_type == "email":
+            return os.path.join(self.chunks_dir, "chunked_emails.tsv")
+        elif data_type == "text_file":
+            return os.path.join(self.chunks_dir, "chunked_text_files.tsv")
+        else:
+            # Consider adding logging here if a logger is available in this class
+            raise ValueError(f"Unsupported data_type for chunk file: {data_type}. Supported types are 'email' and 'text_file'.")
+
+    def get_raw_text_output_dir(self) -> str:
+        """
+        Returns the full path to the directory for storing raw text outputs from TextFileFetcher.
+
+        Returns:
+            str: The absolute path to the raw text output directory.
+        """
+        return self.raw_text_output_dir
 
     def get_cleaned_email_file(self) -> str:
         """
