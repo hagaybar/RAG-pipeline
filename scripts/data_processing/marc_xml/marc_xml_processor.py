@@ -6,6 +6,7 @@ from pathlib import Path
 import pymarc
 from pymarc.exceptions import PymarcException
 import logging
+from scripts.utils.constants import COL_TEXT_FOR_EMBEDDING, COL_MARC_RECORD_ID
 
 class LoggerManager:
     @staticmethod
@@ -63,22 +64,6 @@ class MARCXMLProcessor:
             '651': 'value_array', # Subject - Geographic Name
         }
         
-        # For _build_text_for_embedding: tag -> list of subfields to prioritize
-        self.text_embedding_priority_map = {
-            '245': ['a', 'b'],
-            '100': ['a'],
-            '110': ['a'],
-            '111': ['a'],
-            '520': ['a'],
-            '505': ['a'],
-            '600': ['a', 'x', 'y', 'z', 'v'],
-            '610': ['a', 'b', 'x', 'y', 'z', 'v'],
-            '611': ['a', 'n', 'q', 'x', 'y', 'z', 'v'],
-            '630': ['a', 'p', 'l', 'x', 'y', 'z', 'v'],
-            '650': ['a', 'x', 'y', 'z', 'v'],
-            '651': ['a', 'x', 'y', 'z', 'v'],
-            # Add other main entry (7XX) and series (4XX, 8XX) if desired for embedding text
-        }
         logger.info("MARCXMLProcessor initialized.")
 
     def _extract_entities(self, text: str) -> dict:
@@ -195,7 +180,7 @@ class MARCXMLProcessor:
         enriched_record = {}
         
         # record_id (001)
-        enriched_record['record_id'] = record['001'].data if record['001'] else None
+        enriched_record[COL_MARC_RECORD_ID] = record['001'].data if record['001'] else None
         
         # publication_year_008 & primary_language_008
         enriched_record['publication_year_008'] = None
@@ -262,7 +247,7 @@ class MARCXMLProcessor:
         enriched_record['entities'] = self._extract_entities(ner_input_text)
         
         # text_for_embedding
-        enriched_record['text_for_embedding'] = self._build_text_for_embedding(record, enriched_record['entities'], key_metadata)
+        enriched_record[COL_TEXT_FOR_EMBEDDING] = self._build_text_for_embedding(record, enriched_record['entities'], key_metadata)
         
         # raw_marc_text_representation
         enriched_record['raw_marc_text_representation'] = self._build_raw_marc_text_representation(record)
@@ -374,8 +359,8 @@ if __name__ == '__main__':
 
         # Select and print relevant columns for review
         columns_to_print = [
-            'record_id', 
-            'text_for_embedding', 
+            COL_MARC_RECORD_ID,
+            COL_TEXT_FOR_EMBEDDING,
             'entities_json', 
             'key_metadata_fields_json', 
             'languages',
@@ -390,7 +375,7 @@ if __name__ == '__main__':
         if 'key_metadata_fields_json' in results_df.columns and len(results_df) > 0:
             try:
                 first_record_metadata = json.loads(results_df.iloc[0]['key_metadata_fields_json'])
-                print(f"\nKey metadata from first record (001: {results_df.iloc[0]['record_id']}):")
+                print(f"\nKey metadata from first record (001: {results_df.iloc[0][COL_MARC_RECORD_ID]}):")
                 print(json.dumps(first_record_metadata, indent=2))
             except (TypeError, json.JSONDecodeError) as e:
                 logger.error(f"Could not parse JSON for first record's metadata: {e}")

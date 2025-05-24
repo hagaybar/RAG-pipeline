@@ -61,7 +61,7 @@ class APIClient:
             "text-embedding-3-large" : {"price": 0.13},
             "text-embedding-ada-002" : {"price": 0.10},
             # For models with separate input and output pricing:
-            "gpt-4o-mini": {"input": 0.15, "output": 0.6, "cached_input": 0.075},
+            "gpt-4o-mini": {"input": 0.15, "output": 0.6, "cached_input": 0.075}, # Not currently used in calculate_cost; for future reference or potential specific use cases.
             
     }
 
@@ -168,15 +168,23 @@ class APIClient:
     def should_proceed(self, estimated_cost: float) -> bool:
         """Checks if a request should proceed based on the available budget."""
         available_budget = self.get_available_budget()
+
+        if estimated_cost <= 0:
+            return True  # Free operation
+
+        if available_budget <= 0:
+            print(f"Request blocked. No available budget. Estimated cost: ${estimated_cost:.2f}")
+            return False
+
         cost_percent = (estimated_cost / available_budget) * 100
 
         if cost_percent < 20:
             return True  # Auto-execute
         elif cost_percent < 90:
-            response = input(f"Request cost is ${estimated_cost:.2f} ({cost_percent:.1f}% of budget). Proceed? (y/n): ")
+            response = input(f"Request cost is ${estimated_cost:.2f} ({cost_percent:.1f}% of available budget). Proceed? (y/n): ")
             return response.lower() == 'y'
         else:
-            print(f"Request blocked. Estimated cost ${estimated_cost:.2f} exceeds 90% of budget.")
+            print(f"Request blocked. Estimated cost ${estimated_cost:.2f} exceeds 90% of available budget.")
             return False
 
     def send_completion_request(self, prompt: str, model: str = "gpt-4o-mini", max_tokens: int = 250) -> Optional[str]:

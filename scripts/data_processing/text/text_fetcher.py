@@ -23,6 +23,8 @@ class LoggerManager:
 
 logger = LoggerManager.get_logger(__name__)
 
+from scripts.utils.constants import COL_FILE_PATH, COL_RAW_TEXT, COL_CLEANED_TEXT
+
 class TextFileFetcher:
     """
     Fetches and processes text files from a specified directory.
@@ -94,9 +96,9 @@ class TextFileFetcher:
                     cleaned_text = self.clean_text(raw_text)
                     
                     file_data.append({
-                        "File Path": str(file_path.resolve()),
-                        "Raw Text": raw_text,
-                        "Cleaned Text": cleaned_text
+                        COL_FILE_PATH: str(file_path.resolve()),
+                        COL_RAW_TEXT: raw_text,
+                        COL_CLEANED_TEXT: cleaned_text
                     })
                     logger.debug(f"Successfully processed and added: {file_path.name}")
                 except Exception as e:
@@ -107,7 +109,7 @@ class TextFileFetcher:
         if not file_data:
             logger.warning("No .txt files found in the input directory.")
             if return_dataframe:
-                return pd.DataFrame(columns=["File Path", "Raw Text", "Cleaned Text"])
+                return pd.DataFrame(columns=[COL_FILE_PATH, COL_RAW_TEXT, COL_CLEANED_TEXT])
             if save: # If save is true but no data, maybe return a message or handle as per requirement
                 logger.info("No data to save.")
                 return None # Or an empty file path if that's preferred
