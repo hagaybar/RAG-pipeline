@@ -1,39 +1,46 @@
-"""
-This module serves as a "playground" or test script for experimenting with
-various components and configurations of the RAG pipeline. It typically
-involves setting up logging, loading specific configurations (often using
-hardcoded paths for convenience during testing), and executing ad-hoc
-pipeline operations or component tests. This script is not part of the
-production pipeline logic and is intended for development and experimentation.
-"""
-from scripts.data_processing.email.config_loader import ConfigLoader
+import argparse
+import sys
 import os
-import logging
-from datetime import datetime
+from scripts.pipeline.rag_pipeline import RAGPipeline # Assuming execution from project root
 
-def setup_logging():
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = r"C:\Users\hagaybar\OneDrive - Tel-Aviv University\My Personal files\systems\AI Project\DATA\emails\logs"
-    log_filename = f"{log_path}\pipeline_log_{timestamp}.log"
+def main():
+    parser = argparse.ArgumentParser(description="Run the RAG Email Pipeline with a specific configuration and query.")
+    parser.add_argument("--config", required=True, help="Path to the task configuration YAML file")
+    parser.add_argument("--query", required=True, help="The query string for the RAG pipeline")
+    args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler(log_filename),
-            logging.StreamHandler()
-        ]
-    )
-    logging.info("📍 Pipeline logging started")
+    if not os.path.exists(args.config):
+        print(f"Error: Configuration file not found at {args.config}", file=sys.stderr)
+        sys.exit(1)
 
-setup_logging()
-test_config = ConfigLoader(config_file=r"C:\Users\hagaybar\OneDrive - Tel-Aviv University\My Personal files\systems\AI Project\config\emails\config.yaml")
-data_dir = test_config.get("paths.data_dir")
-email_dir =  test_config.get("paths.email_dir")
-if os.path.isdir(email_dir):
-    files = os.listdir(email_dir)
-    logging.info(f"found Files in directory: {files}")
-    #  logging.info("found Files in directory:", files)
-else:
-    
-    logging.info(f"The path '{email_dir}' is not a valid directory.")
+    try:
+        print(f"Attempting to load pipeline with configuration: {args.config}")
+        pipeline = RAGPipeline(config_path=args.config)
+        
+        print(f"Pipeline loaded. Attempting to run with query: '{args.query}'")
+        result = pipeline.run_full_pipeline(query=args.query)
+        
+        print("\n=== Pipeline Result ===")
+        if result is not None:
+            print(result)
+        else:
+            print("The pipeline did not return a result. Please check logs for more details.")
+            
+    except FileNotFoundError as fnf_error:
+        print(f"Error: A required file was not found. Details: {fnf_error}", file=sys.stderr)
+        sys.exit(1)
+    except ValueError as val_error:
+        print(f"Error: A value error occurred, often due to incorrect configuration. Details: {val_error}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        # Generic error catcher for other unexpected issues
+        print(f"An unexpected error occurred during pipeline execution: {type(e).__name__} - {e}", file=sys.stderr)
+        # For debugging, you might want to print the full traceback
+        # import traceback
+        # traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    # This ensures that the main function is called only when the script is executed directly
+    # and not when imported as a module.
+    main()
