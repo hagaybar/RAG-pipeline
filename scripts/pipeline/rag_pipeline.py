@@ -47,6 +47,16 @@ class RAGPipeline:
     DATA_TYPE_MARCXML = "marcxml"
     SUPPORTED_DATA_TYPES = [DATA_TYPE_EMAIL, DATA_TYPE_TEXT, DATA_TYPE_XML, DATA_TYPE_MARCXML]
 
+    @staticmethod
+    def get_config_section_for_data_type(data_type: str) -> Optional[str]:
+        """Maps a data_type constant to its corresponding config section key."""
+        mapping = {
+            RAGPipeline.DATA_TYPE_EMAIL: "outlook",
+            RAGPipeline.DATA_TYPE_TEXT: "text_files",
+            RAGPipeline.DATA_TYPE_XML: "xml_files",
+            RAGPipeline.DATA_TYPE_MARCXML: "marcxml_files",
+        }
+        return mapping.get(data_type)
 
     """
     Orchestrates the end-to-end Retrieval Augmented Generation (RAG) workflow.

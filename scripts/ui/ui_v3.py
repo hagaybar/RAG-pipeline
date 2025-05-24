@@ -20,6 +20,7 @@ import faiss # Added for Embedding Stats
 import pandas as pd # Added for Embedding Stats
 import numpy as np # Added for Chunk Metrics
 from scripts.pipeline.rag_pipeline import RAGPipeline
+from scripts.ui.config_form_builder import ConfigFormBuilder
 
 st.set_page_config(page_title="RAG Pipeline UI", layout="wide")
 
@@ -214,10 +215,20 @@ with tabs[0]:
                 st.success("🔄 Config reloaded from file.")
             except Exception as e:
                 st.error(f"❌ Failed to reload config: {e}")
-        # Edit
-        if cols[1].button("Edit"):
-            st.session_state.edit_mode_toggle = True
-            st.session_state.open_preview_yaml = True
+        # Edit with Form
+        if cols[1].button("Edit Config Form", key="edit_config_form_button"):
+            st.session_state.editing_config_via_form = True
+            st.session_state.config_to_edit_path = config_path # Store path of config being edited
+            st.session_state.open_preview_yaml = True # Open the View/Edit expander
+            
+            # Ensure Create New Task form is closed and its state cleared
+            st.session_state.open_create_task_form = False
+            if "create_form_builder" in st.session_state:
+                del st.session_state.create_form_builder
+            
+            # Clear old raw text edit mode if it was active, as form edit takes precedence
+            st.session_state.edit_mode = False 
+            st.session_state.edit_mode_toggle = False
         
         # Duplicate
         with cols[2]:
@@ -260,61 +271,176 @@ with tabs[0]:
                     if st.button("❌ Cancel"):
                         st.session_state.confirm_delete = False
 
+    st.divider() # Visual separator
+
+    if st.button("➕ New Task Form", key="open_create_task_form_button"):
+        st.session_state.open_create_task_form = True # Open the Create New Task expander
+        
+        # Ensure Edit Config Form mode is closed and its state cleared
+        st.session_state.editing_config_via_form = False 
+        if "edit_form_builder" in st.session_state:
+            del st.session_state.edit_form_builder
+        if "config_to_edit_path" in st.session_state:
+            del st.session_state.config_to_edit_path
+        
+        # Also clear raw text edit mode state
+        st.session_state.edit_mode = False
+        st.session_state.edit_mode_toggle = False
+        
+        # Close the View/Edit Task YAML expander if it was open
+        st.session_state.open_preview_yaml = False 
 
 
-    with st.expander("➕ Create New Task"):
-        new_task_name = st.text_input("New Task Name", key="new_task_name_input")
-        if st.button("Create from Template"):
-            if not new_task_name:
+    with st.expander("➕ Create New Task", expanded=st.session_state.get("open_create_task_form", False)):
+        # Use a session state variable to manage form display, e.g.
+        # st.session_state.open_create_task_form should be set to True when a user clicks a
+        # "Start Creating New Task" button (you might need to add such a button or trigger).
+        # For now, let's assume it can be expanded manually or triggered by another action.
+
+        if "create_form_builder" not in st.session_state:
+            st.session_state.create_form_builder = ConfigFormBuilder(st, mode="create")
+        
+        form_builder = st.session_state.create_form_builder
+        form_builder.display_form() # Renders all sections
+
+        if st.button("💾 Create Task from Form", key="confirm_create_task_from_form"):
+            collected_config = form_builder.get_config_data()
+            task_name = collected_config.get("task_name")
+
+            if not task_name:
                 st.error("Task name cannot be empty.")
             else:
                 try:
-                    pipeline = RAGPipeline()
-                    # configure_task creates the file like "configs/tasks/new_task_name.yaml"
-                    # It returns the path, but we might not need it directly if list_config_files refreshes
-                    pipeline.configure_task(task_name=new_task_name, output_format="yaml")
-                    st.success(f"Task '{new_task_name}' created successfully from template!")
-                    # Clear input field
-                    st.session_state.new_task_name_input = ""
-                    # Force rerun to update the selectbox in the other expander
+                    pipeline_instance = RAGPipeline() # Temporary instance
+                    # Pass only the relevant parts of collected_config as overrides
+                    # `configure_task` will merge these with defaults and add paths
+                    pipeline_instance.configure_task(task_name=task_name, output_format="yaml", overrides=collected_config, interactive=False)
+                    st.success(f"Task '{task_name}' created successfully from form!")
+                    
+                    # Clear form state for next creation by re-initializing the builder in session state
+                    del st.session_state.create_form_builder 
+                    # Optionally, clear individual form field states if they were not prefixed by form_builder
+                    # (but the provided form_builder uses prefixed keys, so re-init should be enough)
+
+                    st.session_state.open_create_task_form = False # Close expander
+                    st.rerun() # To refresh config list, etc.
+                except Exception as e:
+                    st.error(f"Failed to create task: {str(e)}")
+
+    # 🧩 Feature 2: Safe Edit/View Mode for YAML config
+    with st.expander("📑 View/Edit Task YAML", expanded=st.session_state.get("open_preview_yaml", False)):
+        # Check if an edit was in progress but the top selected_config changed
+        if st.session_state.get("editing_config_via_form", False) and \
+           st.session_state.get("config_to_edit_path") != config_path:
+            
+            old_config_name = os.path.basename(st.session_state.get("config_to_edit_path", "an unknown config"))
+            new_config_name = os.path.basename(config_path)
+            st.warning(f"Config selection changed from '{old_config_name}' to '{new_config_name}'. "
+                       f"Edit operation for '{old_config_name}' has been cancelled. "
+                       f"Click 'Edit Config Form' again for '{new_config_name}' if you wish to edit it.")
+            
+            st.session_state.editing_config_via_form = False
+            st.session_state.open_preview_yaml = False # Close this expander
+            if "edit_form_builder" in st.session_state:
+                del st.session_state.edit_form_builder
+            if "config_to_edit_path" in st.session_state:
+                del st.session_state.config_to_edit_path
+            st.rerun() # Rerun to reflect state changes and closed expander
+
+        if st.session_state.get("editing_config_via_form", False):
+            st.info("Editing selected configuration using the form below.")
+            
+            # current_config_path_for_edit should be the one set when "Edit Config Form" was clicked
+            current_config_path_for_edit = st.session_state.get("config_to_edit_path") 
+            # If somehow config_to_edit_path is not set, but editing_config_via_form is true,
+            # it's an inconsistent state. Fallback to currently selected config_path, but log warning.
+            if not current_config_path_for_edit:
+                st.error("Internal state error: Editing mode active but no specific config path was targeted. Please cancel and retry.")
+                current_config_path_for_edit = config_path # Fallback, but this shouldn't happen
+            
+            try:
+                with open(current_config_path_for_edit, "r", encoding="utf-8") as f:
+                    loaded_config_dict = yaml.safe_load(f)
+                if loaded_config_dict is None:
+                    loaded_config_dict = {}
+                    st.warning("Loaded config is empty or invalid; starting with a blank edit form structure.")
+            except Exception as e:
+                st.error(f"Error loading config for editing: {e}")
+                loaded_config_dict = {}
+
+            if "edit_form_builder" not in st.session_state or st.session_state.get("config_to_edit_path") != st.session_state.edit_form_builder.config_data.get("__config_path__", ""):
+                st.session_state.edit_form_builder = ConfigFormBuilder(st, initial_config=loaded_config_dict, mode="edit")
+                st.session_state.edit_form_builder.config_data["__config_path__"] = current_config_path_for_edit # Track path
+            
+            edit_form = st.session_state.edit_form_builder
+            # Ensure form data is up-to-date if re-opening for the same file without re-init
+            if edit_form.config_data.get("__config_path__") == current_config_path_for_edit and edit_form.config_data != loaded_config_dict:
+                 edit_form.config_data = loaded_config_dict.copy()
+                 # Re-initialize session state for form fields if necessary, or rely on ConfigFormBuilder's internal logic
+                 # This part might need refinement in ConfigFormBuilder to re-populate its state from new initial_config
+
+            edit_form.display_form()
+
+            if st.button("💾 Save Edited Config", key="save_edited_config_form"):
+                updated_config_data = edit_form.get_config_data()
+                original_task_name = loaded_config_dict.get("task_name", os.path.basename(current_config_path_for_edit).replace(".yaml",""))
+                updated_config_data["task_name"] = original_task_name # Ensure task name is not changed
+
+                try:
+                    with open(current_config_path_for_edit, "w", encoding="utf-8") as f:
+                        yaml.safe_dump(updated_config_data, f, sort_keys=False)
+                    st.success(f"✅ Config '{original_task_name}' saved successfully.")
+                    st.session_state.editing_config_via_form = False
+                    st.session_state.open_preview_yaml = False 
+                    del st.session_state.edit_form_builder
+                    if "config_to_edit_path" in st.session_state:
+                        del st.session_state.config_to_edit_path
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Failed to create task: {e}")
-
-    # 🧩 Feature 2: Safe Edit Mode for YAML config
-    with st.expander("📑 Preview Task YAML", expanded=st.session_state.get("open_preview_yaml", False)):
-        # Use session state to remember edit mode + content
-        if "edit_mode" not in st.session_state:
-            st.session_state.edit_mode = False
-        if "edited_config_text" not in st.session_state:
-            st.session_state.edited_config_text = config_text
-
-        # Toggle edit mode if Edit button clicked
-        if st.session_state.get("edit_mode_toggle", False):
-            st.session_state.edit_mode = True
-            st.session_state.edited_config_text = config_text
-            st.session_state.edit_mode_toggle = False
-
-        mode = "Edit mode" if st.session_state.edit_mode else "Read-only"
-        st.radio("Mode:", ["Read-only", "Edit mode"], index=(1 if st.session_state.edit_mode else 0), key="preview_mode", disabled=True)
-
-        if st.session_state.edit_mode:
-            # Editable text box
-            st.session_state.edited_config_text = st.text_area("Edit Config", value=st.session_state.edited_config_text, height=300, key="config_editor")
-
-            if st.button("💾 Save Changes"):
-                try:
-                    with open(config_path, "w", encoding="utf-8") as f:
-                        f.write(st.session_state.edited_config_text)
-                    st.success("✅ Config saved successfully.")
-                    st.session_state.edit_mode = False
-                except Exception as e:
                     st.error(f"❌ Failed to save config: {e}")
-        else:
-            # Read-only preview
-            st.text_area("Config Content", value=config_text, height=300, disabled=True)
-        # Reset flag after use so it doesn't persist across reruns
-        st.session_state.open_preview_yaml = False
+            
+            if st.button("Cancel Edit", key="cancel_edit_config_form"):
+                st.session_state.editing_config_via_form = False
+                st.session_state.open_preview_yaml = False
+                if "edit_form_builder" in st.session_state:
+                    del st.session_state.edit_form_builder
+                if "config_to_edit_path" in st.session_state:
+                    del st.session_state.config_to_edit_path
+                st.rerun()
+
+        else: # Original raw text view/edit logic
+            if "edit_mode" not in st.session_state: # For raw text editing
+                st.session_state.edit_mode = False
+            if "edited_config_text" not in st.session_state:
+                st.session_state.edited_config_text = config_text
+
+            if st.session_state.get("edit_mode_toggle", False): # Triggered by old "Edit" button
+                st.session_state.edit_mode = True
+                st.session_state.edited_config_text = config_text # Load text for raw editor
+                st.session_state.edit_mode_toggle = False
+
+            mode_display = "Edit Raw YAML" if st.session_state.edit_mode else "View Raw YAML"
+            # st.radio("Mode:", ["View Raw YAML", "Edit Raw YAML"], index=(1 if st.session_state.edit_mode else 0), key="preview_mode_radio", disabled=True)
+            st.info(f"Current Mode: {mode_display}")
+
+
+            if st.session_state.edit_mode:
+                st.session_state.edited_config_text = st.text_area("Edit Raw YAML Config", value=st.session_state.edited_config_text, height=300, key="config_editor_raw")
+                if st.button("💾 Save Raw YAML Changes", key="save_raw_yaml_button"):
+                    try:
+                        with open(config_path, "w", encoding="utf-8") as f:
+                            f.write(st.session_state.edited_config_text)
+                        st.success("✅ Raw YAML Config saved successfully.")
+                        st.session_state.edit_mode = False
+                        st.session_state.open_preview_yaml = False
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Failed to save raw YAML config: {e}")
+            else:
+                st.text_area("Config Content (Raw YAML)", value=config_text, height=300, disabled=True)
+        
+        if not st.session_state.get("editing_config_via_form", False): # Only reset if not in form edit mode
+            st.session_state.open_preview_yaml = False
 
 
 # ----------------------
@@ -389,6 +515,17 @@ with tabs[2]:
     st.selectbox("Select Task Config:", list_config_files(), key="pipeline_action_selected_config")
     st.text_input("Query Text:", placeholder="Enter a natural language question...", key="pipeline_query_input")
 
+    # Define data type options - assuming RAGPipeline.SUPPORTED_DATA_TYPES is available
+    # If not, define it manually: data_type_options = ['email', 'text_file', 'xml', 'marcxml']
+    # Ensure RAGPipeline is imported if RAGPipeline.SUPPORTED_DATA_TYPES is used.
+    data_type_options = RAGPipeline.SUPPORTED_DATA_TYPES 
+    st.selectbox(
+        "Select Data Type for Extract & Chunk:",
+        options=data_type_options,
+        key="pipeline_action_selected_data_type",
+        index=data_type_options.index(RAGPipeline.DATA_TYPE_EMAIL) if RAGPipeline.DATA_TYPE_EMAIL in data_type_options else 0 # Default to email
+    )
+
     st.markdown("**Choose Pipeline Steps:**")
     step_cols = st.columns(3)
     step_cols[0].checkbox("Extract & Chunk", key="run_extract_and_chunk")
@@ -408,6 +545,7 @@ with tabs[2]:
         run_embed = st.session_state.get("run_embed_chunks", False)
         run_retrieve = st.session_state.get("run_retrieve_chunks", False)
         run_generate = st.session_state.get("run_generate_answer", False)
+        selected_data_type = st.session_state.get("pipeline_action_selected_data_type", RAGPipeline.DATA_TYPE_EMAIL) # Get selected data type
 
         output_messages = []
 
@@ -432,12 +570,32 @@ with tabs[2]:
                     # Crucial for Independent Step Runs
                     if (run_embed or run_retrieve or run_generate) and not run_extract:
                         if not hasattr(pipeline, 'chunked_file') or pipeline.chunked_file is None:
-                            if pipeline.config and "paths" in pipeline.config and "chunked_emails" in pipeline.config["paths"]:
-                                pipeline.chunked_file = pipeline.config["paths"]["chunked_emails"]
-                                if not os.path.exists(pipeline.chunked_file):
-                                    output_messages.append(f"ℹ️ Note: Chunk file specified in config ({pipeline.chunked_file}) not found. 'Extract & Chunk' may be needed.")
+                            if pipeline.config and "paths" in pipeline.config:
+                                # Determine the correct chunk file key based on selected_data_type
+                                data_type_to_chunk_key_suffix = {
+                                    RAGPipeline.DATA_TYPE_EMAIL: "emails",
+                                    RAGPipeline.DATA_TYPE_TEXT: "text_files",
+                                    RAGPipeline.DATA_TYPE_XML: "xml_files",
+                                    RAGPipeline.DATA_TYPE_MARCXML: "marcxml_files",
+                                }
+                                chunk_file_suffix = data_type_to_chunk_key_suffix.get(selected_data_type)
+                                if chunk_file_suffix:
+                                    # Handle "email" case specifically for key name "chunked_emails"
+                                    if selected_data_type == RAGPipeline.DATA_TYPE_EMAIL:
+                                        chunk_file_config_key = "chunked_emails"
+                                    else:
+                                        chunk_file_config_key = f"chunked_{chunk_file_suffix}"
+                                    
+                                    if chunk_file_config_key in pipeline.config["paths"]:
+                                        pipeline.chunked_file = pipeline.config["paths"][chunk_file_config_key]
+                                        if not os.path.exists(pipeline.chunked_file):
+                                            output_messages.append(f"ℹ️ Note: Chunk file specified in config for data type '{selected_data_type}' ({pipeline.chunked_file}) not found. 'Extract & Chunk' may be needed.")
+                                    else:
+                                        output_messages.append(f"⚠️ Warning: Chunk file path key '{chunk_file_config_key}' for data type '{selected_data_type}' not found in config paths.")
+                                else:
+                                    output_messages.append(f"⚠️ Warning: Could not determine chunk file key for data type '{selected_data_type}'.")
                             else:
-                                output_messages.append("⚠️ Warning: Chunk file path not found in config. 'Extract & Chunk' might be required.")
+                                output_messages.append("⚠️ Warning: 'paths' not found in config. Chunk file cannot be determined.")
                         
                         # Ensure index_path and metadata_path are set for retrieve/generate if not embedding now
                         if not hasattr(pipeline, 'index_path') or not pipeline.index_path:
@@ -449,17 +607,15 @@ with tabs[2]:
 
                     # Execute Selected Steps
                     if run_extract:
-                        chunk_file_path = pipeline.extract_and_chunk()
-                        output_messages.append(f"✅ Extract & Chunk completed. Chunked file: {chunk_file_path}")
+                        chunk_file_path = pipeline.extract_and_chunk(data_type=selected_data_type)
+                        output_messages.append(f"✅ Extract & Chunk for '{selected_data_type}' completed. Chunked file: {chunk_file_path}")
 
                     if run_embed:
                         current_chunk_file = getattr(pipeline, 'chunked_file', None)
-                        if not current_chunk_file and pipeline.config and "paths" in pipeline.config and "chunked_emails" in pipeline.config["paths"]:
-                            current_chunk_file = pipeline.config["paths"]["chunked_emails"]
-                            pipeline.chunked_file = current_chunk_file
+                        # If extract wasn't run, current_chunk_file would have been set by the logic block above
                         
                         if not current_chunk_file or not os.path.exists(current_chunk_file):
-                            output_messages.append(f"❌ Error: Chunk file ({current_chunk_file or 'Not specified'}) not found. 'Extract & Chunk' must be run first or path in config must be valid.")
+                            output_messages.append(f"❌ Error for Embed: Chunk file ({current_chunk_file or 'Not specified'}) for data type '{selected_data_type}' not found. 'Extract & Chunk' must be run first or path in config must be valid.")
                         else:
                             pipeline.embed_chunks()
                             output_messages.append("✅ Embed Chunks completed.")
