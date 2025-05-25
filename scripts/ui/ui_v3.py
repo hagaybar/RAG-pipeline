@@ -16,7 +16,7 @@ import streamlit as st
 import glob
 import yaml
 import os
-import faiss # Added for Embedding Stats
+# import faiss # Added for Embedding Stats - DEFERRED FURTHER
 import pandas as pd # Added for Embedding Stats
 import numpy as np # Added for Chunk Metrics
 from scripts.pipeline.rag_pipeline import RAGPipeline
@@ -364,20 +364,40 @@ with tabs[0]:
                 if loaded_config_dict is None:
                     loaded_config_dict = {}
                     st.warning("Loaded config is empty or invalid; starting with a blank edit form structure.")
-            except Exception as e:
-                st.error(f"Error loading config for editing: {e}")
-                loaded_config_dict = {}
+                
+                # --- BEGIN ADDED/MODIFIED LOGIC ---
+                # Check if task_name in YAML matches the filename (for duplicated tasks)
+                filename_task_name = os.path.basename(current_config_path_for_edit).replace(".yaml", "")
+                yaml_task_name = loaded_config_dict.get("task_name")
 
-            if "edit_form_builder" not in st.session_state or st.session_state.get("config_to_edit_path") != st.session_state.edit_form_builder.config_data.get("__config_path__", ""):
+                if yaml_task_name != filename_task_name:
+                    loaded_config_dict["task_name"] = filename_task_name
+                    # Optionally, could add a st.caption or st.info here to inform the user
+                    # that the task name has been aligned with the filename for this duplicated task.
+                    # For now, just update it silently.
+                # --- END ADDED/MODIFIED LOGIC ---
+
+            except Exception as e:
+                st.error(f"Error loading config for editing or processing task name: {e}") # Modified error message slightly
+                loaded_config_dict = {} # Ensure it's empty on error
+
+            # This is where ConfigFormBuilder is initialized with loaded_config_dict
+            if "edit_form_builder" not in st.session_state or \
+               st.session_state.get("config_to_edit_path") != st.session_state.edit_form_builder.config_data.get("__config_path__", "") or \
+               st.session_state.edit_form_builder.config_data.get("task_name") != loaded_config_dict.get("task_name"): # Add this condition to force re-init if task_name changed
+                
+                # If re-initializing, ensure old session state for form fields is cleared to reflect new initial_config
+                # This is complex; a simpler way is to ensure ConfigFormBuilder itself handles this in _init_session_state
+                # or by re-creating the instance. The current logic re-creates it.
                 st.session_state.edit_form_builder = ConfigFormBuilder(st, initial_config=loaded_config_dict, mode="edit")
-                st.session_state.edit_form_builder.config_data["__config_path__"] = current_config_path_for_edit # Track path
+                st.session_state.edit_form_builder.config_data["__config_path__"] = current_config_path_for_edit
             
             edit_form = st.session_state.edit_form_builder
             # Ensure form data is up-to-date if re-opening for the same file without re-init
-            if edit_form.config_data.get("__config_path__") == current_config_path_for_edit and edit_form.config_data != loaded_config_dict:
-                 edit_form.config_data = loaded_config_dict.copy()
-                 # Re-initialize session state for form fields if necessary, or rely on ConfigFormBuilder's internal logic
-                 # This part might need refinement in ConfigFormBuilder to re-populate its state from new initial_config
+            # The re-initialization condition above should handle most cases where loaded_config_dict changes.
+            # However, if ConfigFormBuilder's internal state needs more direct updates from loaded_config_dict
+            # without full re-instantiation, that logic would go here or within ConfigFormBuilder.
+            # For now, relying on the re-instantiation.
 
             edit_form.display_form()
 
@@ -671,6 +691,7 @@ with tabs[2]:
 # ----------------------
 with tabs[3]:
     st.header("Debugging, File Tools & Utilities")
+    # import faiss # DEFERRED IMPORT for Embedding Stats - Moved closer to usage
 
     st.markdown("**Embedding Stats:**")
     # Ensure list_config_files() is defined globally in the script
@@ -687,6 +708,7 @@ with tabs[3]:
         )
 
         if st.button("Load Embedding Stats", key="load_stats_button"):
+            import faiss # DEFERRED IMPORT - Placed just before first use
             if not selected_stat_config_name:
                 st.info("Please select a task configuration first.")
             else:

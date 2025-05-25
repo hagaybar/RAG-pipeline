@@ -39,74 +39,130 @@ class ConfigFormBuilder:
     def render_embedding_settings(self):
         self.st.subheader("Embedding Settings")
         current_embedding_config = self.config_data.get("embedding", {})
+        current_persisted_mode = current_embedding_config.get("mode", EMBEDDING_MODE_LOCAL)
 
-        modes = [EMBEDDING_MODE_LOCAL, EMBEDDING_MODE_API, EMBEDDING_MODE_BATCH]
-        default_mode = current_embedding_config.get("mode", EMBEDDING_MODE_LOCAL)
-        self._init_session_state("embedding_mode", default_mode)
-        
-        is_edit_mode = self.mode == "edit"
+        # Key for storing the selected embedding mode (local, api, batch) in session state
+        embedding_mode_session_key = self._get_key("embedding_mode")
 
-        selected_mode_key = self._get_key("embedding_mode_select")
-        # Ensure the selectbox uses the session state value for its index
-        current_mode_in_state = self.st.session_state[self._get_key("embedding_mode")]
+        # Initialize session state for "embedding_mode"
+        if self.st.session_state.get(self._get_key("current_form_mode")) != self.mode or \
+           embedding_mode_session_key not in self.st.session_state:
+            self.st.session_state[embedding_mode_session_key] = current_persisted_mode
+        self.st.session_state[self._get_key("current_form_mode")] = self.mode # Track current form mode
+
+        embedding_mode_disabled = False
+        embedding_mode_disabled_reason = None
+        info_message = None
+        all_modes = [EMBEDDING_MODE_LOCAL, EMBEDDING_MODE_API, EMBEDDING_MODE_BATCH]
+        available_modes = all_modes # Default for "create" mode
+
+        if self.mode == "edit":
+            if current_persisted_mode == EMBEDDING_MODE_LOCAL:
+                embedding_mode_disabled = True
+                embedding_mode_disabled_reason = "Embedding mode is fixed to 'local' for existing tasks. To change, create a new task."
+                info_message = embedding_mode_disabled_reason
+                self.st.session_state[embedding_mode_session_key] = EMBEDDING_MODE_LOCAL # Ensure it's locked to local
+            else: 
+                available_modes = [EMBEDDING_MODE_API, EMBEDDING_MODE_BATCH]
+                info_message = "Embedding mode can be switched between 'api' and 'batch'. Model name and dimension can be updated. 'local' mode is fixed for this task."
+                if self.st.session_state[embedding_mode_session_key] == EMBEDDING_MODE_LOCAL:
+                    self.st.session_state[embedding_mode_session_key] = current_persisted_mode
         
-        selected_mode = self.st.selectbox(
-            "Embedding Mode:", modes, 
-            index=modes.index(current_mode_in_state) if current_mode_in_state in modes else 0, 
-            key=selected_mode_key,
-            disabled=is_edit_mode 
+        selected_mode_from_session = self.st.session_state[embedding_mode_session_key]
+        
+        if selected_mode_from_session not in available_modes: # Final consistency check
+            self.st.session_state[embedding_mode_session_key] = available_modes[0]
+            selected_mode_from_session = available_modes[0]
+
+        try:
+            current_selection_index = available_modes.index(selected_mode_from_session)
+        except ValueError: current_selection_index = 0
+
+        embedding_mode_widget_key = self._get_key("embedding_mode_select")
+        
+        def on_embedding_mode_change():
+            new_widget_mode = self.st.session_state[embedding_mode_widget_key]
+            self.st.session_state[embedding_mode_session_key] = new_widget_mode
+            for key_suffix in ["embedding_model_name", "embedding_model_name_select", "embedding_dim", 
+                               "last_embedding_mode_for_model_reset", "last_model_for_dim_reset"]:
+                self.st.session_state.pop(self._get_key(key_suffix), None)
+
+        self.st.selectbox(
+            "Embedding Mode:", available_modes, index=current_selection_index,
+            key=embedding_mode_widget_key, disabled=embedding_mode_disabled,
+            help=embedding_mode_disabled_reason,
+            on_change=on_embedding_mode_change if not embedding_mode_disabled else None
         )
-        # Update session state if widget changes (only if not disabled)
-        if not is_edit_mode:
-            self.st.session_state[self._get_key("embedding_mode")] = selected_mode
-        else: # In edit mode, ensure the state reflects the initial (disabled) value
-            selected_mode = current_mode_in_state
-
-
-        model_options = []
-        if selected_mode == EMBEDDING_MODE_LOCAL:
-            model_options = self.KNOWN_LOCAL_MODELS
-        elif selected_mode in [EMBEDDING_MODE_API, EMBEDDING_MODE_BATCH]:
-            model_options = self.KNOWN_API_MODELS
         
-        default_model_name = current_embedding_config.get("model_name", model_options[0] if model_options else "")
-        self._init_session_state("embedding_model_name", default_model_name)
+        effective_selected_mode = self.st.session_state[embedding_mode_session_key] # This is the true source of mode for logic below
+
+        if info_message: self.st.info(info_message)
+
+        model_options = self.KNOWN_LOCAL_MODELS if effective_selected_mode == EMBEDDING_MODE_LOCAL else self.KNOWN_API_MODELS
+        model_name_session_key = self._get_key("embedding_model_name")
+        default_model_name_from_config = current_embedding_config.get("model_name", model_options[0] if model_options else "")
         
-        current_model_in_state = self.st.session_state[self._get_key("embedding_model_name")]
-        if not is_edit_mode: # Only adjust if not in edit mode, or if the model becomes incompatible
-            if current_model_in_state not in model_options and model_options:
-                self.st.session_state[self._get_key("embedding_model_name")] = model_options[0]
-                st.info(f"Embedding model name was reset to '{model_options[0]}' due to mode change.")
-            elif not model_options and current_model_in_state != "":
-                 self.st.session_state[self._get_key("embedding_model_name")] = ""
-                 st.info("Embedding model name was cleared as no models are listed for the selected mode.")
+        last_mode_for_model_reset = self.st.session_state.get(self._get_key("last_embedding_mode_for_model_reset"))
+
+        # Initialize or reset model_name if mode changed or if it's not in current options
+        if model_name_session_key not in self.st.session_state or \
+           effective_selected_mode != last_mode_for_model_reset or \
+           (self.st.session_state.get(model_name_session_key) not in model_options and model_options):
+            
+            if self.mode == "edit" and effective_selected_mode == current_persisted_mode and default_model_name_from_config in model_options:
+                self.st.session_state[model_name_session_key] = default_model_name_from_config
+            elif model_options: self.st.session_state[model_name_session_key] = model_options[0]
+            else: self.st.session_state[model_name_session_key] = ""
         
-        # For edit mode, ensure the displayed model is the one from config, even if it's not in KNOWN_MODELS for that mode (though it should be)
-        # The selectbox will show it if it's passed as an option. If not, it might default.
-        # Best practice: ensure initial_config's model_name is part of model_options if possible.
-        # For now, the existing logic should handle it by defaulting if not in options.
+        self.st.session_state[self._get_key("last_embedding_mode_for_model_reset")] = effective_selected_mode
+        current_model_in_session = self.st.session_state.get(model_name_session_key,"") # Default to "" if key somehow missing
+        
+        try:
+            model_idx = model_options.index(current_model_in_session) if current_model_in_session in model_options else 0
+        except ValueError: model_idx = 0
+        if not model_options and current_model_in_session != "": # If no options but session has a value, reset
+            self.st.session_state[model_name_session_key] = ""
+        
+        model_name_widget_key = self._get_key("embedding_model_name_select")
+        def on_model_name_change():
+            self.st.session_state[model_name_session_key] = self.st.session_state[model_name_widget_key]
+            self.st.session_state.pop(self._get_key("embedding_dim"), None) # Reset dim for suggestion
+            self.st.session_state.pop(self._get_key("last_model_for_dim_reset"), None)
 
-        self.st.selectbox("Model Name:", model_options, 
-                          index=model_options.index(self.st.session_state[self._get_key("embedding_model_name")]) if self.st.session_state[self._get_key("embedding_model_name")] in model_options else 0,
-                          key=self._get_key("embedding_model_name"),
-                          disabled=is_edit_mode)
+        self.st.selectbox("Model Name:", model_options, index=model_idx, key=model_name_widget_key,
+                          disabled=embedding_mode_disabled, # Model name disabled if mode is fixed
+                          on_change=on_model_name_change if not embedding_mode_disabled else None)
 
-        if is_edit_mode:
-            self.st.info("Embedding mode and model name cannot be changed for existing tasks via this UI. To use a different embedding setup, please duplicate the task.")
+        embedding_dim_session_key = self._get_key("embedding_dim")
+        embedding_dim_disabled_by_mode = (self.mode == "edit" and current_persisted_mode == EMBEDDING_MODE_LOCAL)
+        
+        default_dim_from_config = current_embedding_config.get("embedding_dim", 0)
+        current_model_for_dim_suggestion = self.st.session_state.get(model_name_session_key, "") # Use current value
+        last_model_for_dim_reset = self.st.session_state.get(self._get_key("last_model_for_dim_reset"))
 
-        default_dim = current_embedding_config.get("embedding_dim", 0) 
-        # Suggest dimension based on model only if not in edit mode or if dim is 0
-        if not is_edit_mode or (is_edit_mode and default_dim == 0):
-            suggested_dims = {
-                "text-embedding-3-small": 1536, "text-embedding-3-large": 3072, 
-                "text-embedding-ada-002": 1536, "sentence-transformers/all-MiniLM-L6-v2": 384
-            }
-            current_model_for_dim_suggestion = self.st.session_state[self._get_key("embedding_model_name")]
-            if current_model_for_dim_suggestion in suggested_dims and default_dim == 0 :
-                default_dim = suggested_dims[current_model_for_dim_suggestion]
+        suggested_dims = {"text-embedding-3-small": 1536, "text-embedding-3-large": 3072,
+                          "text-embedding-ada-002": 1536, "sentence-transformers/all-MiniLM-L6-v2": 384}
+        
+        # Initialize or update dimension
+        if embedding_dim_session_key not in self.st.session_state or \
+           current_model_for_dim_suggestion != last_model_for_dim_reset: # This condition means model changed
+            suggested_dim = suggested_dims.get(current_model_for_dim_suggestion)
+            if not embedding_dim_disabled_by_mode and suggested_dim is not None:
+                self.st.session_state[embedding_dim_session_key] = suggested_dim
+            # If editing an existing config, prefer its dimension if not suggesting a new one
+            elif self.mode == "edit" and default_dim_from_config > 0 and not (not embedding_dim_disabled_by_mode and suggested_dim is not None) :
+                 self.st.session_state[embedding_dim_session_key] = default_dim_from_config
+            elif embedding_dim_disabled_by_mode : # Fixed to local mode during edit
+                 self.st.session_state[embedding_dim_session_key] = suggested_dims.get("sentence-transformers/all-MiniLM-L6-v2", 384)
+            else: # Create mode, no specific suggestion based on model, or no pre-existing valid dim
+                 self.st.session_state[embedding_dim_session_key] = 0 # Let validation catch it if it's required, or set a generic default like 1536 for API
 
-        self._init_session_state("embedding_dim", default_dim)
-        self.st.number_input("Embedding Dimension:", min_value=1, step=1, key=self._get_key("embedding_dim"))
+        self.st.session_state[self._get_key("last_model_for_dim_reset")] = current_model_for_dim_suggestion
+        
+        self.st.number_input("Embedding Dimension:", min_value=1, step=1, key=embedding_dim_session_key, 
+                             disabled=embedding_dim_disabled_by_mode)
+        if embedding_dim_disabled_by_mode:
+            self.st.caption("Embedding dimension is fixed for 'local' mode in existing tasks.")
 
 
     def render_chunking_settings(self):
