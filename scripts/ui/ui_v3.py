@@ -452,30 +452,32 @@ with tabs[1]:
 
     st.header("Run and Log Inspection")
 
-    def list_tasks(base_dir: str = "runs") -> list:
-        """List task directories inside runs/"""
-        return sorted([name for name in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, name))])
+def list_tasks(base_dir: str = "runs") -> list:
+    """List task directories inside runs/"""
+    return sorted([name for name in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, name))])
 
-    def list_run_ids(task_name: str) -> list:
-        """List run folders under runs/{task_name}/runs/"""
-        run_dir = os.path.join("runs", task_name, "runs")
-        if not os.path.exists(run_dir):
-            return []
-        return sorted(os.listdir(run_dir), reverse=True)
+def list_run_ids(task_name: str) -> list:
+    """List run folders under runs/{task_name}/runs/"""
+    if not task_name or not os.path.isdir(os.path.join("runs", task_name)): # 4 spaces
+        return [] # Return empty list if task_name is None or not a valid directory # 8 spaces
+    run_dir = os.path.join("runs", task_name, "runs") # 4 spaces
+    if not os.path.exists(run_dir): # 4 spaces
+        return [] # 8 spaces
+    return sorted(os.listdir(run_dir), reverse=True) # 4 spaces
 
-    def load_json(path: str) -> dict:
-        """Load JSON file if it exists"""
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        return {"error": f"File not found: {path}"}
+def load_json(path: str) -> dict:
+    """Load JSON file if it exists"""
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"error": f"File not found: {path}"}
 
-    def load_text(path: str) -> str:
-        """Load plain text file if it exists"""
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                return f.read()
-        return f"(No content found in {path})"
+def load_text(path: str) -> str:
+    """Load plain text file if it exists"""
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return f"(No content found in {path})"
 
     # Task selector
     task_list = list_tasks()

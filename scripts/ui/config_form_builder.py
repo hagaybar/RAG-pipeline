@@ -11,7 +11,7 @@ class ConfigFormBuilder:
         self.st = streamlit_instance
         self.mode = mode # "create" or "edit"
         self.config_data = initial_config.copy() if initial_config else {}
-        self.session_state_prefix = "form_"
+        self.session_state_prefix = f"{self.mode}_form_" # Mode-specific prefix
         
         # Define known models for dynamic suggestions
         self.KNOWN_LOCAL_MODELS = ["sentence-transformers/all-MiniLM-L6-v2", "other/local-model"]
