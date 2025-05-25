@@ -242,4 +242,3 @@ if __name__ == '__main__':
         if test_dir.exists():
              logger.info(f"Test files are in {test_dir.resolve()}")
              # To manually clean up: shutil.rmtree(test_dir)
-```

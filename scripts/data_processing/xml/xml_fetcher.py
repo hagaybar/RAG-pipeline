@@ -161,4 +161,3 @@ if __name__ == '__main__':
             logger.info(f"Test files are in {test_dir.resolve()}")
             # To manually clean up: shutil.rmtree(test_dir)
 
-```
