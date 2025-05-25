@@ -458,6 +458,8 @@ with tabs[1]:
 
     def list_run_ids(task_name: str) -> list:
         """List run folders under runs/{task_name}/runs/"""
+    if not task_name or not os.path.isdir(os.path.join("runs", task_name)):
+        return [] # Return empty list if task_name is None or not a valid directory
         run_dir = os.path.join("runs", task_name, "runs")
         if not os.path.exists(run_dir):
             return []

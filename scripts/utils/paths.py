@@ -90,10 +90,12 @@ class TaskPaths:
         The specific filename depends on the data_type.
         - "email": "chunked_emails.tsv"
         - "text_file": "chunked_text_files.tsv"
+        - "xml": "chunked_xml.tsv"
+        - "marcxml": "chunked_marcxml.tsv"
 
         Args:
             data_type (str, optional): The type of data. Defaults to "email".
-                                       Supported values: "email", "text_file".
+                                       Supported values: "email", "text_file", "xml", "marcxml".
 
         Returns:
             str: The absolute path to the chunked data file within the task's
@@ -106,9 +108,15 @@ class TaskPaths:
             return os.path.join(self.chunks_dir, "chunked_emails.tsv")
         elif data_type == "text_file":
             return os.path.join(self.chunks_dir, "chunked_text_files.tsv")
+        elif data_type == "xml":
+            return os.path.join(self.chunks_dir, "chunked_xml.tsv")
+        elif data_type == "marcxml":
+            return os.path.join(self.chunks_dir, "chunked_marcxml.tsv")
         else:
-            # Consider adding logging here if a logger is available in this class
-            raise ValueError(f"Unsupported data_type for chunk file: {data_type}. Supported types are 'email' and 'text_file'.")
+            # Supported types should be kept in sync with RAGPipeline.SUPPORTED_DATA_TYPES
+            # For now, explicitly list them in the error message based on current known supported types.
+            supported_types_message = "'email', 'text_file', 'xml', 'marcxml'"
+            raise ValueError(f"Unsupported data_type for chunk file: {data_type}. Supported types are {supported_types_message}.")
 
     def get_raw_text_output_dir(self) -> str:
         """
