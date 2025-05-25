@@ -7,6 +7,7 @@ styles like in-text citations.
 """
 from abc import ABC, abstractmethod
 from scripts.api_clients.openai.gptApiClient import APIClient
+from scripts.utils.constants import PROMPT_STYLE_DEFAULT, PROMPT_STYLE_REFERENCES
 
 
 from abc import ABC, abstractmethod
@@ -51,7 +52,7 @@ class EmailPromptBuilder(PromptBuilder):
       "Sources" section, as this is typically appended in a later stage by a
       different component (e.g., `CitationFormatter`).
     """
-    def __init__(self, style: str = "default"):
+    def __init__(self, style: str = PROMPT_STYLE_DEFAULT):
         """
         Initializes the EmailPromptBuilder.
 
@@ -78,7 +79,7 @@ class EmailPromptBuilder(PromptBuilder):
         Returns:
             str: The fully formatted prompt string.
         """
-        if self.style == "references":
+        if self.style == PROMPT_STYLE_REFERENCES:
             return self.build_prompt_references(query, context)
         else:
             return self.build_prompt(query, context)
@@ -134,7 +135,7 @@ class TextFilePromptBuilder(PromptBuilder):
       "Sources" section, as this is typically appended in a later stage by a
       different component (e.g., `CitationFormatter`).
     """
-    def __init__(self, style: str = "default"):
+    def __init__(self, style: str = PROMPT_STYLE_DEFAULT):
         """
         Initializes the TextFilePromptBuilder.
 
@@ -210,7 +211,7 @@ class TextFilePromptBuilder(PromptBuilder):
 
         final_context_str = "\n---\n".join(formatted_context_parts)
 
-        if self.style == "references":
+        if self.style == PROMPT_STYLE_REFERENCES:
             return self._build_prompt_references(query, final_context_str)
         return self._build_prompt(query, final_context_str)
 
@@ -286,30 +287,3 @@ Context from Documents:
 ---
 Question: {query}
 Answer:"""
-    
-    # This method seems to be a duplicate of EmailPromptBuilder's build_prompt_references.
-    # It should be specific to TextFilePromptBuilder if kept, or removed if covered by the above.
-    # For now, I'll assume the _build_prompt_references is the one to be used by TextFilePromptBuilder.
-    # def build_prompt_references(self, query: str, context: str) -> str:
-    #     """
-    #     Constructs a prompt specifically designed to make the AI cite sources
-    #     from the provided context.
-    #     ...
-    #     """
-    #     instructions = (
-    #         "You are an AI assistant answering questions based on internal email discussions.\n" # This seems like a copy-paste from EmailPromptBuilder
-    #         "Each context chunk is labeled [1], [2], etc.\n\n"
-    #         "✅ When writing your answer:\n"
-    #         "- **Every factual claim must be cited** using these labels (e.g., [1], [2]).\n"
-    #         "- These citations help the user verify where the information came from.\n"
-    #         "- If you don't include any [number] citations, your answer will be considered incomplete.\n\n"
-    #         "❗ Do not include a 'Sources' section. It will be added automatically later.\n"
-    #         "If no answer can be derived from the context, reply: 'I don't know.'\n"
-    #     )
-
-    #     return f"""{instructions}
-# ---
-# {context}
-# ---
-# Question: {query}
-# Answer:"""

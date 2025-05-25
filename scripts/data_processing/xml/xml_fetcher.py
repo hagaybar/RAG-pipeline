@@ -21,6 +21,8 @@ class LoggerManager:
 
 logger = LoggerManager.get_logger(__name__)
 
+from scripts.utils.constants import COL_FILE_PATH, COL_RAW_TEXT, COL_CLEANED_TEXT
+
 class XMLFetcher:
     """
     Fetches and processes XML files from a specified directory, extracting text content.
@@ -80,9 +82,9 @@ class XMLFetcher:
                     cleaned_text = self._extract_text_from_xml(tree_root)
                     
                     file_data.append({
-                        "File Path": str(file_path.resolve()),
-                        "Raw Text": raw_text,
-                        "Cleaned Text": cleaned_text
+                        COL_FILE_PATH: str(file_path.resolve()),
+                        COL_RAW_TEXT: raw_text,
+                        COL_CLEANED_TEXT: cleaned_text
                     })
                     logger.debug(f"Successfully processed and added: {file_path.name}")
 
@@ -97,7 +99,7 @@ class XMLFetcher:
 
         if not file_data:
             logger.warning(f"No .xml files found in {self.input_dir}")
-            return pd.DataFrame(columns=["File Path", "Raw Text", "Cleaned Text"])
+            return pd.DataFrame(columns=[COL_FILE_PATH, COL_RAW_TEXT, COL_CLEANED_TEXT])
 
         df = pd.DataFrame(file_data)
         logger.info(f"Successfully created DataFrame with {len(df)} XML files.")

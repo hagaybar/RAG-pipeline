@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import pythoncom # Added for COM initialization
 import threading # Added for detailed logging
 from scripts.utils.logger import LoggerManager
+from scripts.utils.constants import COL_ENTRY_ID, COL_SUBJECT, COL_SENDER, COL_RECEIVED, COL_RAW_BODY, COL_CLEANED_BODY
 
 
 class EmailFetcher:
@@ -169,12 +170,12 @@ class EmailFetcher:
                     if item_count < 3: # Log details for first 3 items
                         self.logger.debug(f"[EmailFetcher][Thread: {thread_id}] Processing item {item_count + 1} - EntryID: {getattr(item, 'EntryID', 'N/A')} Subject: {getattr(item, 'Subject', 'N/A')}")
                     email_data.append({
-                        "EntryID": item.EntryID,
-                        "Subject": item.Subject,
-                        "Sender": item.SenderName,
-                        "Received": item.ReceivedTime.strftime("%Y-%m-%d %H:%M:%S"),
-                        "Raw Body": item.Body if hasattr(item, "Body") else "No Body",
-                        "Cleaned Body": self.clean_email_body(item.Body)
+                        COL_ENTRY_ID: item.EntryID,
+                        COL_SUBJECT: item.Subject,
+                        COL_SENDER: item.SenderName,
+                        COL_RECEIVED: item.ReceivedTime.strftime("%Y-%m-%d %H:%M:%S"),
+                        COL_RAW_BODY: item.Body if hasattr(item, "Body") else "No Body",
+                        COL_CLEANED_BODY: self.clean_email_body(item.Body)
                     })
             
             df = pd.DataFrame(email_data)

@@ -12,6 +12,7 @@ import numpy as np
 import faiss
 from typing import Optional, Union, List
 from scripts.api_clients.openai.batch_embedder import BatchEmbedder
+from scripts.utils.constants import COL_CHUNK
 
 class GeneralPurposeEmbedder:
     """
@@ -63,7 +64,7 @@ class GeneralPurposeEmbedder:
         os.makedirs(self.output_dir, exist_ok=True)
 
 
-    def embed_dataframe(self, df: pd.DataFrame, text_column: str = "Chunk") -> np.ndarray:
+    def embed_dataframe(self, df: pd.DataFrame, text_column: str = COL_CHUNK) -> np.ndarray:
         """Embeds the text in the specified column of a DataFrame."""
         texts = df[text_column].tolist()
         embeddings = self.embedder_client.embed(texts)
@@ -94,7 +95,7 @@ class GeneralPurposeEmbedder:
         else:
             new_df.to_csv(self.metadata_path, sep="\t", index=False)
 
-    def run(self, chunked_file_path: str, text_column: str = "Chunk") -> None:
+    def run(self, chunked_file_path: str, text_column: str = COL_CHUNK) -> None:
         """
         Performs the full embedding workflow for a given TSV file of text chunks.
         This includes: loading the chunks, filtering out any chunks already present
@@ -133,7 +134,7 @@ class GeneralPurposeEmbedder:
         self.save_index(new_embeddings)
         self.save_metadata(df)
 
-    def run_batch(self, chunked_file_path: str, text_column: str = "Chunk") -> None:
+    def run_batch(self, chunked_file_path: str, text_column: str = COL_CHUNK) -> None:
             """
             Performs a full batch embedding workflow using OpenAI's batch API for a
             given TSV file of text chunks. This involves: loading chunks, filtering

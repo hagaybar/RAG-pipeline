@@ -13,6 +13,7 @@ import faiss
 import os
 from scripts.api_clients.openai.gptApiClient import APIClient
 import logging
+from scripts.utils.constants import COL_CHUNK, COL_SENDER, COL_RECEIVED, COL_FILE_PATH, COL_MARC_RECORD_ID
 
 
 class ChunkRetriever:
@@ -66,8 +67,8 @@ class ChunkRetriever:
     def __init__(self,
                  index_path: str,
                  metadata_path: str,
-                 text_column: str = "Chunk",
-                 date_column: str = "Received",
+                 text_column: str = COL_CHUNK,
+                 date_column: str = COL_RECEIVED,
                  top_k: int = 5,
                  debug_dir: str = "debug",
                  config: Optional[dict] = None):
@@ -162,6 +163,9 @@ class ChunkRetriever:
             if not query:
                 raise ValueError("Must provide either `query` or `query_vector`.")
             embedding = self.api_client.get_embedding(query)
+            if embedding is None:
+                logging.error(f"Failed to get embedding for query: {query}. API call may have failed or was blocked.")
+                return {}  # Return empty dict if embedding failed
             query_vector = np.array([embedding], dtype="float32")
         else:
             if isinstance(query_vector, list):
@@ -200,15 +204,18 @@ class ChunkRetriever:
             date_str_formatted = date_str.strftime("%Y-%m-%d") if pd.notna(date_str) else "Unknown"
             
             # Construct a simple header for the context string.
-            # For MARCXML, 'Sender' might not be relevant. Consider more generic terms or check column existence.
-            sender_info = f"Sender: {row.get('Sender', 'N/A')}, " if 'Sender' in row else ""
-            file_path_info = f"Source File: {row.get('File Path', 'N/A')}, " if 'File Path' in row else ""
-            record_id_info = f"Record ID: {row.get('record_id', 'N/A')}, " if 'record_id' in row else ""
+            sender_val = row.get(COL_SENDER, 'N/A')
+            file_path_val = row.get(COL_FILE_PATH, 'N/A')
+            record_id_val = row.get(COL_MARC_RECORD_ID, 'N/A')
+
+            sender_info = f"Sender: {sender_val}, " if COL_SENDER in row and sender_val != 'N/A' else ""
+            file_path_info = f"Source File: {file_path_val}, " if COL_FILE_PATH in row and file_path_val != 'N/A' else ""
+            record_id_info = f"Record ID: {record_id_val}, " if COL_MARC_RECORD_ID in row and record_id_val != 'N/A' else ""
 
             label_header_parts = [label]
-            if sender_info and row.get('Sender') != 'N/A': label_header_parts.append(sender_info.strip(", "))
-            if file_path_info and row.get('File Path') != 'N/A': label_header_parts.append(file_path_info.strip(", "))
-            if record_id_info and row.get('record_id') != 'N/A': label_header_parts.append(record_id_info.strip(", "))
+            if sender_info: label_header_parts.append(sender_info.strip(", "))
+            if file_path_info: label_header_parts.append(file_path_info.strip(", "))
+            if record_id_info: label_header_parts.append(record_id_info.strip(", "))
             if date_str_formatted != "Unknown": label_header_parts.append(f"Date: {date_str_formatted}")
             
             label_header = f"({' | '.join(label_header_parts)})"
@@ -223,7 +230,7 @@ class ChunkRetriever:
             result["original_faiss_index"] = int(metadata_idx) # Keep original index if needed
             result["score"] = float(scores[idx])
             # Ensure 'text' key holds the main chunk content, overriding if 'text' was a metadata column name
-            result["text"] = row[self.text_column] 
+            result["text"] = row[self.text_column] # self.text_column is already COL_CHUNK by default
             result["label_for_llm_context"] = label # The simple "[rank]" label
             # 'metadata' key is now redundant if 'result' itself is the full metadata.
             # However, to maintain compatibility with consumers expecting result['metadata'],
