@@ -22,7 +22,7 @@ def list_config_files(config_dir: str = "configs/tasks") -> list:
     Returns:
         List[str]: Sorted list of config file names.
     """
-    return sorted([f.split("/")[-1] for f in glob.glob(f"{config_dir}/*.yaml")])
+    return sorted([os.path.basename(f) for f in glob.glob(f"{config_dir}/*.yaml")])
 
 # ----------------------
 # Session State Initialization for Pipeline Actions
