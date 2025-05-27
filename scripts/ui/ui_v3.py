@@ -3,6 +3,7 @@ import glob
 import yaml
 import os
 import sys # For stdout manipulation, and now for sys.path
+import json # Added for reading JSON files
 
 # Calculate the project root based on the current file's location
 # Assumes ui_v3.py is in scripts/ui/
@@ -333,20 +334,112 @@ with tabs[0]:
 with tabs[1]:
     st.header("Run and Log Inspection")
 
-    st.selectbox("Select Task:", ["email_test", "api_test"])
-    st.selectbox("Run ID:", ["20240514_153055", "20240513_184200"])
+    # Populate 'Select Task' dropdown
+    task_config_files = list_config_files()
+    task_names = [os.path.splitext(f)[0] for f in task_config_files]
+    # Initialize selected_log_task if not present, to avoid errors on first run
+    if 'selected_log_task' not in st.session_state:
+        st.session_state.selected_log_task = None
+    st.selectbox("Select Task:", task_names, key="selected_log_task", index=task_names.index(st.session_state.selected_log_task) if st.session_state.selected_log_task and st.session_state.selected_log_task in task_names else 0 if task_names else 0)
 
-    with st.expander("📄 Run Metadata", expanded=False):
-        st.json({"run_id": "20240514_153055", "embedding_model": "text-embedding-3-small"})
+    # Populate 'Run ID' dropdown based on selected task
+    run_ids = []
+    if st.session_state.selected_log_task:
+        # Construct path using PROJECT_ROOT for robustness
+        runs_dir_path = os.path.join(PROJECT_ROOT, "runs", st.session_state.selected_log_task, "runs")
+        if os.path.exists(runs_dir_path) and os.path.isdir(runs_dir_path):
+            try:
+                run_ids = sorted([name for name in os.listdir(runs_dir_path) if os.path.isdir(os.path.join(runs_dir_path, name))], reverse=True)
+            except FileNotFoundError: # Should be caught by os.path.exists, but as a safeguard
+                st.warning(f"Run directory not found for task '{st.session_state.selected_log_task}'. It might have been moved or deleted.")
+                run_ids = [] # Ensure run_ids is empty
+            except Exception as e:
+                st.error(f"Error listing run IDs for task '{st.session_state.selected_log_task}': {e}")
+                run_ids = [] # Ensure run_ids is empty
+        else:
+            # This case handles when the specific task's run directory doesn't exist.
+            # No explicit message here as the empty dropdown implies no runs or selectable task.
+            pass # run_ids remains empty
+    
+    # Initialize selected_log_run_id if not present
+    if 'selected_log_run_id' not in st.session_state:
+        st.session_state.selected_log_run_id = None
+
+    # Ensure the selected_log_run_id is valid for the current run_ids
+    # If the previously selected run_id is not in the new list, reset it
+    if st.session_state.selected_log_run_id not in run_ids:
+        st.session_state.selected_log_run_id = run_ids[0] if run_ids else None
+
+    st.selectbox("Run ID:", run_ids, key="selected_log_run_id", index=run_ids.index(st.session_state.selected_log_run_id) if st.session_state.selected_log_run_id and st.session_state.selected_log_run_id in run_ids else 0 if run_ids else 0,
+                 help="Select a Run ID. Run IDs are sorted reverse chronologically. If empty, select a task or the task has no runs yet.")
+
+
+    # Get selected task and run ID
+    selected_task_name = st.session_state.get("selected_log_task")
+    selected_run_id = st.session_state.get("selected_log_run_id")
+
+    # Placeholder for messages if task/run not selected or file not found
+    default_no_selection_message = "Select a task and a run ID to view details."
+    default_not_found_message = "File not found."
+
+    with st.expander("📄 Run Metadata", expanded=True): # Expanded by default
+        if selected_task_name and selected_run_id:
+            metadata_path = os.path.join(PROJECT_ROOT, "runs", selected_task_name, "runs", selected_run_id, "run_metadata.json")
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    metadata_content = json.load(f)
+                st.json(metadata_content)
+            except FileNotFoundError:
+                st.info(f"Run metadata file not found at: {metadata_path}")
+            except json.JSONDecodeError:
+                st.error(f"Error decoding JSON from metadata file at: {metadata_path}")
+            except Exception as e:
+                st.error(f"An error occurred while reading metadata: {e}")
+        else:
+            st.info(default_no_selection_message)
 
     with st.expander("💬 Answer Output"):
-        st.code("The NERS voting enhancement is currently not available in production...", language="text")
+        if selected_task_name and selected_run_id:
+            answer_path = os.path.join(PROJECT_ROOT, "runs", selected_task_name, "runs", selected_run_id, "answer.txt")
+            try:
+                with open(answer_path, "r", encoding="utf-8") as f:
+                    answer_content = f.read()
+                st.text_area("Answer", value=answer_content, height=200, disabled=True)
+            except FileNotFoundError:
+                st.info(f"Answer file not found at: {answer_path}")
+            except Exception as e:
+                st.error(f"An error occurred while reading the answer file: {e}")
+        else:
+            st.info(default_no_selection_message)
 
     with st.expander("📜 Query Debug Log"):
-        st.code("[1] Subject: Re: NERS update\n[2] Subject: New features...", language="text")
+        if selected_task_name and selected_run_id:
+            debug_log_path = os.path.join(PROJECT_ROOT, "runs", selected_task_name, "runs", selected_run_id, "query_debug.txt")
+            try:
+                with open(debug_log_path, "r", encoding="utf-8") as f:
+                    debug_log_content = f.read()
+                st.text_area("Debug Log", value=debug_log_content, height=300, disabled=True)
+            except FileNotFoundError:
+                st.info(f"Query debug log file not found at: {debug_log_path}")
+            except Exception as e:
+                st.error(f"An error occurred while reading the query debug log: {e}")
+        else:
+            st.info(default_no_selection_message)
 
     with st.expander("🪵 Execution Log"):
-        st.code("2024-05-14 15:30:55 | INFO | Embedding complete.", language="text")
+        if selected_task_name and selected_run_id:
+            # Note: Path for execution log is different
+            execution_log_path = os.path.join(PROJECT_ROOT, "runs", selected_task_name, "logs", f"{selected_run_id}.log")
+            try:
+                with open(execution_log_path, "r", encoding="utf-8") as f:
+                    execution_log_content = f.read()
+                st.text_area("Execution Log", value=execution_log_content, height=400, disabled=True)
+            except FileNotFoundError:
+                st.info(f"Execution log file not found at: {execution_log_path}")
+            except Exception as e:
+                st.error(f"An error occurred while reading the execution log: {e}")
+        else:
+            st.info(default_no_selection_message)
 
 # ----------------------
 # Tab 3: Pipeline Actions
