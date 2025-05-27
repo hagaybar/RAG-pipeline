@@ -132,12 +132,16 @@ class EmailFetcher:
             email_data = []
             for item in filtered_items: # filtered_items could be None if Restrict fails gracefully or folder is empty
                 if hasattr(item, "Class") and item.Class == 43: # olMailItem
+                    raw_subject = item.Subject if hasattr(item, "Subject") else ""
+                    # Use item.Body for both Raw Body and as input to clean_email_body
+                    raw_body_content = item.Body if hasattr(item, "Body") else ""
+
                     email_data.append({
-                        "Subject": item.Subject if hasattr(item, "Subject") else "",
-                        "Sender": item.SenderName if hasattr(item, "SenderName") else "",
+                        "Subject": self._sanitize_text_for_tsv(raw_subject),
+                        "Sender": item.SenderName if hasattr(item, "SenderName") else "", # SenderName is unlikely to have tabs/newlines
                         "Received": item.ReceivedTime.strftime("%Y-%m-%d %H:%M:%S") if hasattr(item, "ReceivedTime") and item.ReceivedTime else "",
-                        "Raw Body": item.Body if hasattr(item, "Body") else "No Body",
-                        "Cleaned Body": self.clean_email_body(item.Body if hasattr(item, "Body") else "")
+                        "Raw Body": raw_body_content, # Keep raw body as is, assuming it's for inspection, not direct TSV parsing field issue
+                        "Cleaned Body": self.clean_email_body(raw_body_content) # clean_email_body now uses _sanitize_text_for_tsv
                     })
 
             df = pd.DataFrame(email_data)
@@ -261,4 +265,15 @@ class EmailFetcher:
         Returns:
             str: The cleaned email body text (currently, the original body).
         """
-        return body  # placeholder for actual cleaning logic
+        # This method might have more domain-specific cleaning in the future (e.g., signature removal).
+        # For now, it primarily ensures TSV compatibility.
+        return self._sanitize_text_for_tsv(body)
+
+    def _sanitize_text_for_tsv(self, text: str) -> str:
+        if not isinstance(text, str):
+            return ""
+        # Replace tab, newline, and carriage return with a single space
+        # Corrected: \r for carriage return
+        sanitized_text = text.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+        # Replace multiple consecutive spaces with a single space
+        return ' '.join(sanitized_text.split())

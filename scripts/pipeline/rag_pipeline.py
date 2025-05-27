@@ -318,6 +318,20 @@ class RAGPipeline:
         df = pd.DataFrame(raw_emails_df)
         df["Chunks"] = df["Cleaned Body"].apply(lambda x: chunker.chunk_text(str(x)))
         df_chunks = df.explode("Chunks").reset_index(drop=True).rename(columns={"Chunks": "Chunk"})
+
+        # Sanitize the 'Chunk' column as a safeguard before saving to TSV
+        def sanitize_text_for_tsv(text: str) -> str:
+            if not isinstance(text, str):
+                return ""
+            # Replace tab, newline, and carriage return with a single space
+            sanitized_text = text.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+            # Replace multiple consecutive spaces with a single space
+            return ' '.join(sanitized_text.split())
+
+        # Ensure 'Chunk' column is string type before applying sanitization
+        if "Chunk" in df_chunks.columns:
+            df_chunks["Chunk"] = df_chunks["Chunk"].astype(str).apply(sanitize_text_for_tsv)
+        
         df_chunks.to_csv(output_file, sep="\t", index=False, quoting=csv.QUOTE_MINIMAL)
 
         self.chunked_file = output_file

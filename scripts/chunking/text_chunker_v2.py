@@ -109,6 +109,17 @@ class TextChunker:
             outputs = self.model(**inputs)
         return outputs.last_hidden_state.mean(dim=1).numpy()
 
+    def _sanitize_text_for_tsv(self, text: str) -> str:
+        if not isinstance(text, str):
+            # This case should ideally not be reached if inputs to chunking are strings,
+            # but as a safeguard:
+            return "" 
+        # Replace tab, newline, and carriage return with a single space
+        # Note: The prompt had '' for carriage return, assuming it meant '\r'
+        sanitized_text = text.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+        # Replace multiple consecutive spaces with a single space
+        return ' '.join(sanitized_text.split())
+
     def _semantic_chunking(self, sentences: List[str]) -> List[str]:
         """
         Perform semantic chunking based on sentence embeddings and similarity.
@@ -150,38 +161,52 @@ class TextChunker:
             return []
         
         sentences = self._split_sentences(text)
+        if not sentences: # handle case where text has no sentences
+            return []
+            
         initial_chunks = self._semantic_chunking(sentences)
 
-        final_chunks = []
+        processed_chunks = [] # Use a new list for chunks after max_size processing
         for chunk in initial_chunks:
             tokens = self.tokenizer.encode(chunk, add_special_tokens=False)
             if len(tokens) > self.max_chunk_size:
-                split_chunks = [
+                split_tokens_list = [
                     tokens[i:i + self.max_chunk_size]
                     for i in range(0, len(tokens), self.max_chunk_size - self.overlap)
                 ]
-                for split_chunk in split_chunks:
-                    text = self.tokenizer.decode(split_chunk, skip_special_tokens=True)
-                    final_chunks.append(text)
+                for split_tokens in split_tokens_list:
+                    decoded_text = self.tokenizer.decode(split_tokens, skip_special_tokens=True)
+                    processed_chunks.append(decoded_text) # Add raw decoded text first
             else:
-                final_chunks.append(chunk)
+                processed_chunks.append(chunk) # Add original chunk if not oversized
 
+        # Sanitize all chunks in processed_chunks before merging logic
+        sanitized_processed_chunks = [self._sanitize_text_for_tsv(chk) for chk in processed_chunks]
 
-        # Post-process: merge short chunks
+        # Post-process: merge short chunks using sanitized_processed_chunks
         final_filtered_chunks = []
         buffer = ""
 
-        for chunk in final_chunks:
-            if len(chunk) < self.min_chunk_size:
-                buffer += " " + chunk
+        for chunk in sanitized_processed_chunks: # Iterate over sanitized chunks
+            # The length check for min_chunk_size should ideally use token count or a consistent measure.
+            # For now, it uses character length on already sanitized text.
+            if len(chunk) < self.min_chunk_size and len(chunk) > 0: # Avoid adding empty strings to buffer immediately
+                if buffer: # Add space only if buffer is not empty
+                    buffer += " " + chunk
+                else:
+                    buffer = chunk
             else:
                 if buffer:
-                    final_filtered_chunks.append(buffer.strip())
-                    buffer = ""
-                final_filtered_chunks.append(chunk.strip())
+                    # Before appending buffer, ensure it's not just spaces if chunks were tiny
+                    if buffer.strip(): 
+                        final_filtered_chunks.append(buffer) # Buffer is already formed from sanitized parts
+                    buffer = "" # Reset buffer
+                if chunk.strip(): # Add current chunk if it's not just spaces
+                    final_filtered_chunks.append(chunk) 
 
-        if buffer:
-            final_filtered_chunks.append(buffer.strip())
-
-        return final_filtered_chunks
+        if buffer and buffer.strip(): # Append any remaining buffer content if not just spaces
+            final_filtered_chunks.append(buffer)
+        
+        # Final check to remove any empty strings that might have resulted from sanitizing space-only chunks
+        return [chk for chk in final_filtered_chunks if chk]
 
