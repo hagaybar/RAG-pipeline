@@ -184,7 +184,7 @@ class RAGPipeline:
         """
         self.logger.info("Setting user query...")
         self.query = query
-        print(f"🔍 Query set: {query}")
+        yield f"🔍 Query set: {query}"
         self.logger.info(f"User query set: {query}")
 
     def _create_embedder(self):
@@ -301,8 +301,8 @@ class RAGPipeline:
         output_file = self.config["paths"]["chunked_emails"]
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-        print("📦 raw_emails preview:")
-        print(raw_emails_df.head(3).to_string())
+        yield "📦 raw_emails preview:"
+        yield raw_emails_df.head(3).to_string()
 
 
         chunk_cfg = self.config["chunking"]
@@ -335,7 +335,7 @@ class RAGPipeline:
         df_chunks.to_csv(output_file, sep="\t", index=False, quoting=csv.QUOTE_MINIMAL)
 
         self.chunked_file = output_file
-        print(f"✅ Chunked email data saved to: {output_file}")
+        yield f"✅ Chunked email data saved to: {output_file}"
         self.logger.info(f"Chunked email data saved to: {output_file}")
         return output_file
 
@@ -359,29 +359,40 @@ class RAGPipeline:
                           `extract_and_chunk` was not run successfully before this).
         """
         self.ensure_config_loaded()
+        yield "ℹ️ Starting chunk embedding..."
         self.logger.info("Starting chunk embedding...")
         if not self.chunked_file:
             self.logger.error("No chunked file available. Run extract_and_chunk() first.")
+            yield "❌ Error: No chunked file available. Run extract_and_chunk() first."
             raise RuntimeError("No chunked file available. Run extract_and_chunk() first.")
 
-        # self.mode is set in load_config() from self.config["embedding"]["mode"]
-        # Or, access directly:
         embedding_mode = self.config.get("embedding", {}).get("mode")
 
         if embedding_mode == "batch":
+            yield "ℹ️ Batch embedding mode detected. Calling embedder's run_batch method."
             self.logger.info("Batch embedding mode detected. Calling embedder's run_batch method.")
-            # Ensure self.embedder (GeneralPurposeEmbedder instance) has run_batch method
             if not hasattr(self.embedder, "run_batch"):
                 self.logger.error("Embedder does not support batch embedding (run_batch method missing).")
-                raise RuntimeError("Embedder does not support batch embedding (run_batch method missing). This typically means self.embedder is not a GeneralPurposeEmbedder instance or the method is not defined there.")
+                yield "❌ Error: Embedder does not support batch embedding."
+                raise RuntimeError("Embedder does not support batch embedding (run_batch method missing).")
+            # Assuming self.embedder.run_batch() might also become a generator
+            # For now, if it prints, those won't be captured unless it's also refactored.
+            # If it's a blocking call that prints, we can't intercept those prints here.
+            # This refactoring focuses on RAGPipeline's direct print/yield.
             self.embedder.run_batch(self.chunked_file, text_column="Chunk")
+            yield f"✅ Batch embedding completed for {self.chunked_file}."
         else:
+            yield f"ℹ️ Standard embedding mode ('{embedding_mode}') detected. Calling embedder's run method."
             self.logger.info(f"Standard embedding mode ('{embedding_mode}') detected. Calling embedder's run method.")
-            # Ensure self.embedder (GeneralPurposeEmbedder instance) has run method
             if not hasattr(self.embedder, "run"):
                 self.logger.error("Embedder does not support standard embedding (run method missing).")
-                raise RuntimeError("Embedder does not support standard embedding (run method missing). This typically means self.embedder is not a GeneralPurposeEmbedder instance or the method is not defined there.")
+                yield "❌ Error: Embedder does not support standard embedding."
+                raise RuntimeError("Embedder does not support standard embedding (run method missing).")
+            # Similar to run_batch, if self.embedder.run() prints, they are not captured here.
             self.embedder.run(self.chunked_file, text_column="Chunk")
+            yield f"✅ Standard embedding completed for {self.chunked_file}."
+        # This method's primary job is to orchestrate; detailed logs from embedder are separate.
+        # It doesn't have a specific return value other than None upon completion.
 
     def embed_chunks_batch(self) -> None:
         """
@@ -403,16 +414,23 @@ class RAGPipeline:
                           embedder (`self.embedder`) does not have a `run_batch` method.
         """
         self.ensure_config_loaded()
+        yield "ℹ️ Starting batch chunk embedding..."
         self.logger.info("Starting batch chunk embedding...")
 
         if not self.chunked_file:
             self.logger.error("No chunked file available. Run extract_and_chunk() first.")
+            yield "❌ Error: No chunked file available. Run extract_and_chunk() first."
             raise RuntimeError("No chunked file available. Run extract_and_chunk() first.")
 
         if not hasattr(self.embedder, "run_batch"):
+            yield "❌ Error: Current embedder does not support batch embedding."
             raise RuntimeError("Current embedder does not support batch embedding.")
 
+        # Assuming self.embedder.run_batch() might also become a generator
+        # For now, if it prints, those won't be captured.
         self.embedder.run_batch(self.chunked_file, text_column="Chunk")
+        yield f"✅ Batch embedding completed for {self.chunked_file} using explicit batch method."
+        # This method also returns None upon completion.
 
     def update_embeddings(self) -> None:
         """
@@ -556,10 +574,11 @@ class RAGPipeline:
             ValueError: If no query is available (neither passed directly nor
                         set via `self.query`).
         """
+        yield "ℹ️ Starting chunk retrieval..."
         self.logger.info("Starting chunk retrieval...")
         self.ensure_config_loaded()
 
-        top_k = self.config.get("retrieval", {}).get("top_k", 5)  # ← Read from config
+        top_k = self.config.get("retrieval", {}).get("top_k", 5)
 
         retriever = ChunkRetriever(
             index_path=self.index_path,
@@ -570,12 +589,17 @@ class RAGPipeline:
 
         query = query or self.query
         if not query:
+            yield "❌ Error: No query provided for retrieval."
             raise ValueError("No query provided. Use get_user_query() or pass query explicitly.")
 
-        query_vector = self.embedder.embed_query(query)
-        result = retriever.retrieve(query_vector=query_vector)
-        self.last_chunks = result
+        yield f"🔍 Embedding query: '{query[:50]}...'"
+        query_vector = self.embedder.embed_query(query) # Assuming embed_query is not a generator
+        yield f"📊 Query embedded. Retrieving top {top_k} chunks."
+        
+        result = retriever.retrieve(query_vector=query_vector) # Assuming retrieve is not a generator
+        # self.last_chunks will be updated by run_steps after this returns
 
+        yield f"✅ Retrieved {len(result['context'])} relevant chunks."
         self.logger.info(f"Retrieved {len(result['context'])} relevant chunks for query: {query}")
         return result
 
@@ -615,30 +639,38 @@ class RAGPipeline:
         os.makedirs(run_dir, exist_ok=True)
 
         logger.info("Generating answer...")
+        yield "ℹ️ Generating answer..."
 
         query = query or self.query
         if not query:
             logger.error("No query provided.")
+            yield "❌ Error: No query provided for answer generation."
             raise ValueError("No query provided. Use get_user_query() before calling generate_answer().")
+        yield f"📝 Using query: '{query[:50]}...'"
 
         chunks = chunks or getattr(self, "last_chunks", None)
         if not chunks:
             logger.error("No chunks provided.")
+            yield "❌ Error: No chunks provided for answer generation."
             raise ValueError("No chunks provided. Ensure retrieve() ran before generate_answer().")
+        yield f"📚 Using {len(chunks.get('top_chunks', []))} retrieved chunks for context."
 
         logger.info("Building prompt...")
+        yield "🏗️ Building prompt..."
         prompt_builder = EmailPromptBuilder(style="references")
-        client = APIClient(config=self.config)
+        client = APIClient(config=self.config) # Assuming APIClient is not a generator
         prompt = prompt_builder.build(query, chunks["context"])
+        yield "🔍 Prompt built. Sending to language model..."
 
         logger.info("Sending prompt to OpenAI...")
-        answer = client.send_completion_request(prompt)
+        answer = client.send_completion_request(prompt) # Assuming this is a blocking call
 
-        # Format citations
+        yield "🎨 Formatting citations..."
         formatter = CitationFormatter(top_chunks=chunks["top_chunks"])
         answer = formatter.finalize_answer(answer)
 
         logger.info("Answer received.")
+        yield "✅ Answer received and formatted."
 
         # Save outputs
         answer_path = os.path.join(run_dir, "answer.txt")
@@ -672,7 +704,8 @@ class RAGPipeline:
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
 
-        print("💬 Generated Answer:\n", answer)
+        # The print statement for the answer is removed; run_steps will yield it if it's the final step.
+        # yield f"💬 Generated Answer:\n{answer}" # This might be too verbose for streaming; the UI will display it.
         logger.info(f"Answer saved to: {answer_path}")
         logger.info(f"Run metadata saved to: {metadata_path}")
         return answer
@@ -870,31 +903,65 @@ class RAGPipeline:
 
     def run_steps(self):
         """
-        Execute all steps added via `add_step()` in order.
+        Execute all steps added via `add_step()` in order, yielding progress messages.
+        This method is now a generator.
         """
-        print("🚀 Running configured pipeline steps...\n")
+        yield "🚀 Running configured pipeline steps...\n"
+        self.last_answer = None # Clear previous answer
+        final_result_of_run = None
+
         for step_name, kwargs in self.steps:
             step_fn = getattr(self, step_name)
-            print(f"➡️ Running step: {step_name}")
+            yield f"➡️ Running step: {step_name}"
+            step_result = None
             try:
-                result = step_fn(**kwargs)
-                print(f"✅ Step '{step_name}' completed.\n")
+                # Check if the step function is a generator
+                # A simple way is to see if it's one of the refactored ones.
+                # More robustly, one might inspect it, but this list is fine for now.
+                if step_name in ["get_user_query", "extract_and_chunk", "embed_chunks", 
+                                 "embed_chunks_batch", "retrieve", "generate_answer"]:
+                    step_generator = step_fn(**kwargs)
+                    while True:
+                        try:
+                            message = next(step_generator)
+                            yield message
+                        except StopIteration as e:
+                            step_result = e.value  # Capture return value of the generator step
+                            break
+                else: # For non-generator steps (if any were added this way)
+                    step_result = step_fn(**kwargs)
+                
+                final_result_of_run = step_result # Keep track of the latest result
 
-                # If final step is generate_answer → show + save result
-                if step_name == "generate_answer":
-                    print("🧠 Final Answer:")
-                    print(result)
+                # Update instance variables based on step results
+                if step_name == "extract_and_chunk":
+                    self.chunked_file = step_result
+                    yield f"📝 Chunked file path set to: {self.chunked_file}"
+                elif step_name == "retrieve":
+                    self.last_chunks = step_result
+                    yield f"🧠 Last chunks updated from retrieval step."
+                elif step_name == "generate_answer":
+                    self.last_answer = step_result
+                    # The answer itself is returned by generate_answer,
+                    # UI will handle displaying it.
+                    # No need to print it here, but we can yield a confirmation.
+                    yield "🎉 Answer generated."
+                    # The actual answer text is in self.last_answer / step_result
 
-                    task_name = self.config.get("task_name", "unnamed_task")
-                    output_path = os.path.join("outputs", "answers", f"{task_name}.txt")
-                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    with open(output_path, "w", encoding="utf-8") as f:
-                        f.write(result)
-                    print(f"📁 Answer saved to: {output_path}")
+                yield f"✅ Step '{step_name}' completed.\n"
 
             except Exception as e:
-                print(f"❌ Step '{step_name}' failed with error: {e}")
+                self.logger.error(f"Step '{step_name}' failed with error: {e}", exc_info=True)
+                yield f"❌ Step '{step_name}' failed with error: {e}"
                 raise
+        
+        # If the last step was generate_answer, its result is self.last_answer
+        # This generator can also "return" this value for the caller to access via StopIteration.value
+        if self.steps and self.steps[-1][0] == "generate_answer":
+            return self.last_answer
+        elif final_result_of_run is not None: # Return the result of the last step if it's not None
+            return final_result_of_run
+        # Otherwise, it will implicitly return None
 
     def pipe_review(self):
         """

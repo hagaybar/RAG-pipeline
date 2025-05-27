@@ -175,33 +175,38 @@ def handle_run_pipeline():
 
     # g. Execute pipeline
     output_messages.append("🚀 Running pipeline steps...")
-    st.session_state.pipeline_output = "\n".join(output_messages) # Update UI before long run
+    st.session_state.pipeline_output = "\n".join(output_messages) # Update UI before starting the generator
 
-    old_stdout = sys.stdout
-    redirected_output = StringIO()
-    sys.stdout = redirected_output
     try:
-        pipeline.run_steps() 
+        # pipeline.run_steps() is now a generator
+        for message in pipeline.run_steps(): # Iterate through yielded messages
+            output_messages.append(message)
+            # Update the UI progressively
+            st.session_state.pipeline_output = "\n".join(output_messages) 
         
-        pipeline_stdout = redirected_output.getvalue()
-        output_messages.append("✅ Pipeline execution complete.")
-        if pipeline_stdout:
-            output_messages.append("\n--- Pipeline Output ---")
-            output_messages.append(pipeline_stdout)
+        # pipeline.run_steps() generator is exhausted here.
+        # If generate_answer was run, its result is in pipeline.last_answer.
+        # Messages for it should have been yielded by generate_answer and run_steps.
+        # A general "Pipeline execution complete" message should also be yielded by run_steps.
+        # If RAGPipeline's run_steps doesn't yield a final "complete" message, add one here:
+        # if not any("Pipeline execution complete" in msg for msg in output_messages):
+        #    if not any("Error during pipeline execution" in msg for msg in output_messages):
+        #        output_messages.append("✅ Pipeline execution complete.")
         
-        if steps_to_run[-1] == "generate_answer" and hasattr(pipeline, 'last_answer') and pipeline.last_answer:
+        # Check if 'generate_answer' was supposed to be run and if 'last_answer' is available
+        if steps_to_run and steps_to_run[-1] == "generate_answer" and hasattr(pipeline, 'last_answer') and pipeline.last_answer:
             output_messages.append("\n--- Final Answer ---")
-            output_messages.append(str(pipeline.last_answer))
+            output_messages.append(str(pipeline.last_answer)) # Ensure it's a string
 
     except Exception as e:
-        output_messages.append(f"❌ Error during pipeline execution: {e}")
-        pipeline_stdout = redirected_output.getvalue()
-        if pipeline_stdout:
-            output_messages.append("\n--- Pipeline Output (before error) ---")
-            output_messages.append(pipeline_stdout)
-    finally:
-        sys.stdout = old_stdout # Restore stdout
+        # Ensure any error messages are also added to the output
+        error_message = f"❌ Error during pipeline execution: {e}"
+        output_messages.append(error_message)
+        # Also log to console for more detailed debugging if needed (Streamlit typically logs errors to console too)
+        print(f"Pipeline execution error in Streamlit UI: {e}") 
+    # No finally block needed for stdout restoration
     
+    # Final update to ensure everything is displayed
     st.session_state.pipeline_output = "\n".join(output_messages)
 
 # Top-level tab navigation
@@ -483,7 +488,7 @@ with tabs[2]:
     st.button("🚀 Run Selected Steps", on_click=handle_run_pipeline)
 
     with st.expander("🧠 Output Area", expanded=True): # Keep it expanded
-        st.text_area("Log", value=st.session_state.get("pipeline_output", "(Results will be shown here after execution)"), height=300, disabled=True)
+        st.code(st.session_state.get("pipeline_output", "(Results will be shown here after execution)"), language=None)
 
 # ----------------------
 # Tab 4: Utilities & Tools
