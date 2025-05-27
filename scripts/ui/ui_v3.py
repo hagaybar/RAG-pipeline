@@ -4,6 +4,18 @@ import yaml
 import os
 from io import StringIO # For capturing stdout
 import sys # For stdout manipulation
+
+
+# Calculate the project root based on the current file's location
+# Assumes ui_v3.py is in scripts/ui/
+# os.path.dirname(__file__) gives scripts/ui
+# os.path.join(..., "../../") goes up two levels to Rag_Project
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+
+# Add PROJECT_ROOT to sys.path if it's not already there
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from scripts.pipeline.rag_pipeline import RAGPipeline
 
 st.set_page_config(page_title="RAG Pipeline UI", layout="wide")
