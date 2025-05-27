@@ -133,9 +133,19 @@ def handle_run_pipeline():
             output_messages.append(f"🗣️ Query set in pipeline: '{query_text}'")
 
         for step_name in steps_to_run:
-            # Assuming add_step handles dependencies or they are met by prior steps.
-            pipeline.add_step(step_name)
-            output_messages.append(f"➕ Step '{step_name}' added to pipeline.")
+            if step_name == "retrieve":
+                if 'embed_chunks' not in steps_to_run:
+                    pipeline.add_step(step_name, force=True)
+                    output_messages.append(f"➕ Step '{step_name}' added to pipeline (force=True, assuming embeddings exist).")
+                else:
+                    pipeline.add_step(step_name, force=False)
+                    output_messages.append(f"➕ Step '{step_name}' added to pipeline.")
+            elif step_name == "generate_answer": # Depends on retrieve, should be fine without force if retrieve is added
+                pipeline.add_step(step_name, force=False)
+                output_messages.append(f"➕ Step '{step_name}' added to pipeline.")
+            else: # For 'extract_and_chunk', 'embed_chunks'
+                pipeline.add_step(step_name, force=False)
+                output_messages.append(f"➕ Step '{step_name}' added to pipeline.")
     
     except Exception as e:
         output_messages.append(f"❌ Error adding steps to RAGPipeline: {e}")
