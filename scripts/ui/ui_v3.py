@@ -4,18 +4,6 @@ import yaml
 import os
 from io import StringIO # For capturing stdout
 import sys # For stdout manipulation
-
-
-# Calculate the project root based on the current file's location
-# Assumes ui_v3.py is in scripts/ui/
-# os.path.dirname(__file__) gives scripts/ui
-# os.path.join(..., "../../") goes up two levels to Rag_Project
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
-
-# Add PROJECT_ROOT to sys.path if it's not already there
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
 from scripts.pipeline.rag_pipeline import RAGPipeline
 
 st.set_page_config(page_title="RAG Pipeline UI", layout="wide")
@@ -43,14 +31,12 @@ if 'extract_and_chunk_cb' not in st.session_state:
     st.session_state.extract_and_chunk_cb = False
 if 'embed_chunks_cb' not in st.session_state:
     st.session_state.embed_chunks_cb = False
-if 'embed_chunks_batch_cb' not in st.session_state:
-    st.session_state.embed_chunks_batch_cb = False
+# 'embed_chunks_batch_cb' session state removed
 if 'retrieve_cb' not in st.session_state:
     st.session_state.retrieve_cb = False
 if 'generate_answer_cb' not in st.session_state:
     st.session_state.generate_answer_cb = False
-if 'embedding_choice_made_by_retrieve' not in st.session_state: # As per detailed prompt
-    st.session_state.embedding_choice_made_by_retrieve = False
+# embedding_choice_made_by_retrieve is removed as per subtask instructions
 if 'pipeline_output' not in st.session_state: # For pipeline execution output
     st.session_state.pipeline_output = "(Results will be shown here after execution)"
 
@@ -66,38 +52,19 @@ def handle_pipeline_step_change():
     if not st.session_state.retrieve_cb and st.session_state.generate_answer_cb:
         st.session_state.generate_answer_cb = False
 
-    # Manage embedding_choice_made_by_retrieve flag
-    # Reset if retrieve_cb is False
-    if not st.session_state.retrieve_cb:
-        st.session_state.embedding_choice_made_by_retrieve = False
-    
     # c. If retrieve_cb is checked:
     if st.session_state.retrieve_cb:
-        condition_c_i_met_this_run = False # Local flag for this run of the handler
-        # i. If *neither* embed_chunks_cb nor embed_chunks_batch_cb is checked, auto check embed_chunks_cb.
-        if not st.session_state.embed_chunks_cb and not st.session_state.embed_chunks_batch_cb:
-            st.session_state.embed_chunks_cb = True
-            st.session_state.embedding_choice_made_by_retrieve = True # retrieve made the choice
-            condition_c_i_met_this_run = True # Mark that c.i logic ran in this execution
-        
-        # d. If embed_chunks_cb is checked (and retrieve_cb is true), ensure embed_chunks_batch_cb is unchecked.
-        if st.session_state.embed_chunks_cb:
-            if st.session_state.embed_chunks_batch_cb: # If batch somehow also got checked
-                st.session_state.embed_chunks_batch_cb = False # Enforce rule (d)
-            
-            # If c.i (default selection) did not run in THIS handler call to set embed_chunks_cb,
-            # it implies user interaction or pre-existing state for embed_chunks_cb.
-            # Thus, it's not an "auto" choice by retrieve anymore.
-            if not condition_c_i_met_this_run:
-                 st.session_state.embedding_choice_made_by_retrieve = False
-        
-        # e. If embed_chunks_batch_cb is checked (and retrieve_cb is true), ensure embed_chunks_cb is unchecked.
-        # This implies embed_chunks_cb was false because of the 'if' condition for (d).
-        elif st.session_state.embed_chunks_batch_cb: 
-            # st.session_state.embed_chunks_cb = False # This is already false if this path is taken due to 'if/elif'.
-                                                      # However, explicitly setting it ensures rule (e).
-            st.session_state.embed_chunks_cb = False 
-            st.session_state.embedding_choice_made_by_retrieve = False # User selected batch, so not retrieve's auto choice.
+        # The auto-checking of 'embed_chunks_cb' when 'retrieve_cb' is checked and no embedding option is selected,
+        # and all related logic for 'embedding_choice_made_by_retrieve' and 'condition_c_i_met_this_run'
+        # has been removed as per subtask instructions.
+
+        # d. & e. Mutual exclusivity logic simplified as 'embed_chunks_batch_cb' is removed.
+        # No specific logic needed here now for 'embed_chunks_cb' beyond its own state,
+        # as there's no other embedding option to make it mutually exclusive with.
+        # The 'retrieve_cb' might still imply 'embed_chunks_cb' should be checked if no other step handles embedding,
+        # but that auto-checking logic was removed in the previous step.
+        pass # No specific action needed for embed_chunks_cb based on other checkboxes in this simplified model.
+    # No 'else' block needed here.
 
 # ----------------------
 # Callback for Running Manual Pipeline
@@ -130,8 +97,7 @@ def handle_run_pipeline():
         steps_to_run.append("extract_and_chunk")
     if st.session_state.get('embed_chunks_cb', False):
         steps_to_run.append("embed_chunks")
-    if st.session_state.get('embed_chunks_batch_cb', False):
-        steps_to_run.append("embed_chunks_batch")
+    # 'embed_chunks_batch_cb' removed from steps_to_run
     if st.session_state.get('retrieve_cb', False):
         steps_to_run.append("retrieve")
     if st.session_state.get('generate_answer_cb', False):
@@ -372,13 +338,9 @@ with tabs[2]:
     with col1:
         st.checkbox("Extract & Chunk", key="extract_and_chunk_cb", on_change=handle_pipeline_step_change)
        
-        # Logic for disabling one embedding choice if the other is selected + retrieve is on
-        # The st.session_state.get is important for initial render before callback has run for these keys
-        disable_embed_batch = st.session_state.get('retrieve_cb', False) and st.session_state.get('embed_chunks_cb', False)
-        st.checkbox("Embed Chunks", key="embed_chunks_cb", on_change=handle_pipeline_step_change, disabled=disable_embed_batch)
-
-        disable_embed_regular = st.session_state.get('retrieve_cb', False) and st.session_state.get('embed_chunks_batch_cb', False)
-        st.checkbox("Embed Chunks Batch", key="embed_chunks_batch_cb", on_change=handle_pipeline_step_change, disabled=disable_embed_regular)
+        # 'Embed Chunks Batch' checkbox and its disabling logic removed.
+        # 'Embed Chunks' checkbox no longer needs a complex 'disabled' attribute based on batch mode.
+        st.checkbox("Embed Chunks", key="embed_chunks_cb", on_change=handle_pipeline_step_change) # disabled attribute removed
 
     with col2:
         # Retrieve cannot be unchecked if Generate Answer is checked
