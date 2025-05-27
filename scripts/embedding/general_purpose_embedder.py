@@ -10,6 +10,7 @@ import os
 import pandas as pd
 import numpy as np
 import faiss
+import csv # Added for quoting options in to_csv
 from typing import Optional, Union, List
 from scripts.api_clients.openai.batch_embedder import BatchEmbedder
 
@@ -90,9 +91,9 @@ class GeneralPurposeEmbedder:
     def save_metadata(self, new_df: pd.DataFrame) -> None:
         """Appends new metadata to the metadata file."""
         if os.path.exists(self.metadata_path):
-            new_df.to_csv(self.metadata_path, sep="\t", mode='a', index=False, header=False)
+            new_df.to_csv(self.metadata_path, sep="\t", mode='a', index=False, header=False, quoting=csv.QUOTE_MINIMAL)
         else:
-            new_df.to_csv(self.metadata_path, sep="\t", index=False)
+            new_df.to_csv(self.metadata_path, sep="\t", index=False, quoting=csv.QUOTE_MINIMAL)
 
     def run(self, chunked_file_path: str, text_column: str = "Chunk") -> None:
         """

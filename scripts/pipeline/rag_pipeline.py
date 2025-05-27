@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 import pandas as pd
 import yaml
+import csv # Added for quoting options in to_csv
 from datetime import datetime
 
 
@@ -317,7 +318,7 @@ class RAGPipeline:
         df = pd.DataFrame(raw_emails_df)
         df["Chunks"] = df["Cleaned Body"].apply(lambda x: chunker.chunk_text(str(x)))
         df_chunks = df.explode("Chunks").reset_index(drop=True).rename(columns={"Chunks": "Chunk"})
-        df_chunks.to_csv(output_file, sep="\t", index=False)
+        df_chunks.to_csv(output_file, sep="\t", index=False, quoting=csv.QUOTE_MINIMAL)
 
         self.chunked_file = output_file
         print(f"✅ Chunked email data saved to: {output_file}")
