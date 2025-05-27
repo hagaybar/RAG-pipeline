@@ -140,12 +140,12 @@ def handle_run_pipeline():
     # f. Add steps to the pipeline instance
     try:
         if requires_query:
-            pipeline.get_user_query(query_text) 
-            output_messages.append(f"🗣️ Query set in pipeline: '{query_text}'")
-            # Formally add "get_user_query" as a step to satisfy dependencies
+            # Remove direct call to pipeline.get_user_query(query_text)
+            # Remove associated message: output_messages.append(f"🗣️ Query set in pipeline: '{query_text}'")
+            # Formally add "get_user_query" as a step, passing query_text as an argument
             try:
-                pipeline.add_step("get_user_query", force=True) # force=True as get_user_query has no deps
-                output_messages.append("➕ Step 'get_user_query' formally added to pipeline.")
+                pipeline.add_step("get_user_query", force=True, query=query_text) 
+                output_messages.append(f"➕ Step 'get_user_query' (with query: '{query_text}') formally added to pipeline.")
             except Exception as e:
                 output_messages.append(f"❌ Error formally adding 'get_user_query' step: {e}")
                 # Update pipeline_output before returning, so user sees the message
