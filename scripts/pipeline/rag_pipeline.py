@@ -250,7 +250,7 @@ class RAGPipeline:
             from scripts.embedding.general_purpose_embedder import GeneralPurposeEmbedder
 
             api_client = APIClient(config=self.config)
-            self.logger.info("Batch API client created for embedding.")
+            self.logger.info("API client created for GeneralPurposeEmbedder (config mode is 'batch').")
             return GeneralPurposeEmbedder(
                 embedder_client=api_client,
                 embedding_dim=embedding_dim,
@@ -363,7 +363,25 @@ class RAGPipeline:
         if not self.chunked_file:
             self.logger.error("No chunked file available. Run extract_and_chunk() first.")
             raise RuntimeError("No chunked file available. Run extract_and_chunk() first.")
-        self.embedder.run(self.chunked_file, text_column="Chunk")
+
+        # self.mode is set in load_config() from self.config["embedding"]["mode"]
+        # Or, access directly:
+        embedding_mode = self.config.get("embedding", {}).get("mode")
+
+        if embedding_mode == "batch":
+            self.logger.info("Batch embedding mode detected. Calling embedder's run_batch method.")
+            # Ensure self.embedder (GeneralPurposeEmbedder instance) has run_batch method
+            if not hasattr(self.embedder, "run_batch"):
+                self.logger.error("Embedder does not support batch embedding (run_batch method missing).")
+                raise RuntimeError("Embedder does not support batch embedding (run_batch method missing). This typically means self.embedder is not a GeneralPurposeEmbedder instance or the method is not defined there.")
+            self.embedder.run_batch(self.chunked_file, text_column="Chunk")
+        else:
+            self.logger.info(f"Standard embedding mode ('{embedding_mode}') detected. Calling embedder's run method.")
+            # Ensure self.embedder (GeneralPurposeEmbedder instance) has run method
+            if not hasattr(self.embedder, "run"):
+                self.logger.error("Embedder does not support standard embedding (run method missing).")
+                raise RuntimeError("Embedder does not support standard embedding (run method missing). This typically means self.embedder is not a GeneralPurposeEmbedder instance or the method is not defined there.")
+            self.embedder.run(self.chunked_file, text_column="Chunk")
 
     def embed_chunks_batch(self) -> None:
         """
