@@ -2,9 +2,198 @@ import streamlit as st
 import glob
 import yaml
 import os
+from io import StringIO # For capturing stdout
+import sys # For stdout manipulation
+from scripts.pipeline.rag_pipeline import RAGPipeline
 
 st.set_page_config(page_title="RAG Pipeline UI", layout="wide")
 st.title("📬 RAG Pipeline Control Panel")
+
+# ----------------------
+# Helper Functions
+# ----------------------
+def list_config_files(config_dir: str = "configs/tasks") -> list:
+    """
+    Scan the task_configs directory for .yaml files.
+
+    Args:
+        config_dir (str): Path to the config folder.
+
+    Returns:
+        List[str]: Sorted list of config file names.
+    """
+    return sorted([f.split("/")[-1] for f in glob.glob(f"{config_dir}/*.yaml")])
+
+# ----------------------
+# Session State Initialization for Pipeline Actions
+# ----------------------
+if 'extract_and_chunk_cb' not in st.session_state:
+    st.session_state.extract_and_chunk_cb = False
+if 'embed_chunks_cb' not in st.session_state:
+    st.session_state.embed_chunks_cb = False
+if 'embed_chunks_batch_cb' not in st.session_state:
+    st.session_state.embed_chunks_batch_cb = False
+if 'retrieve_cb' not in st.session_state:
+    st.session_state.retrieve_cb = False
+if 'generate_answer_cb' not in st.session_state:
+    st.session_state.generate_answer_cb = False
+if 'embedding_choice_made_by_retrieve' not in st.session_state: # As per detailed prompt
+    st.session_state.embedding_choice_made_by_retrieve = False
+if 'pipeline_output' not in st.session_state: # For pipeline execution output
+    st.session_state.pipeline_output = "(Results will be shown here after execution)"
+
+# ----------------------
+# Callback for Pipeline Step Checkboxes
+# ----------------------
+def handle_pipeline_step_change():
+    # a. If generate_answer_cb is checked, ensure retrieve_cb is checked.
+    if st.session_state.generate_answer_cb and not st.session_state.retrieve_cb:
+        st.session_state.retrieve_cb = True
+
+    # b. If retrieve_cb is *unchecked*, ensure generate_answer_cb is unchecked.
+    if not st.session_state.retrieve_cb and st.session_state.generate_answer_cb:
+        st.session_state.generate_answer_cb = False
+
+    # Manage embedding_choice_made_by_retrieve flag
+    # Reset if retrieve_cb is False
+    if not st.session_state.retrieve_cb:
+        st.session_state.embedding_choice_made_by_retrieve = False
+    
+    # c. If retrieve_cb is checked:
+    if st.session_state.retrieve_cb:
+        condition_c_i_met_this_run = False # Local flag for this run of the handler
+        # i. If *neither* embed_chunks_cb nor embed_chunks_batch_cb is checked, auto check embed_chunks_cb.
+        if not st.session_state.embed_chunks_cb and not st.session_state.embed_chunks_batch_cb:
+            st.session_state.embed_chunks_cb = True
+            st.session_state.embedding_choice_made_by_retrieve = True # retrieve made the choice
+            condition_c_i_met_this_run = True # Mark that c.i logic ran in this execution
+        
+        # d. If embed_chunks_cb is checked (and retrieve_cb is true), ensure embed_chunks_batch_cb is unchecked.
+        if st.session_state.embed_chunks_cb:
+            if st.session_state.embed_chunks_batch_cb: # If batch somehow also got checked
+                st.session_state.embed_chunks_batch_cb = False # Enforce rule (d)
+            
+            # If c.i (default selection) did not run in THIS handler call to set embed_chunks_cb,
+            # it implies user interaction or pre-existing state for embed_chunks_cb.
+            # Thus, it's not an "auto" choice by retrieve anymore.
+            if not condition_c_i_met_this_run:
+                 st.session_state.embedding_choice_made_by_retrieve = False
+        
+        # e. If embed_chunks_batch_cb is checked (and retrieve_cb is true), ensure embed_chunks_cb is unchecked.
+        # This implies embed_chunks_cb was false because of the 'if' condition for (d).
+        elif st.session_state.embed_chunks_batch_cb: 
+            # st.session_state.embed_chunks_cb = False # This is already false if this path is taken due to 'if/elif'.
+                                                      # However, explicitly setting it ensures rule (e).
+            st.session_state.embed_chunks_cb = False 
+            st.session_state.embedding_choice_made_by_retrieve = False # User selected batch, so not retrieve's auto choice.
+
+# ----------------------
+# Callback for Running Manual Pipeline
+# ----------------------
+def handle_run_pipeline():
+    st.session_state.pipeline_output = "" # Clear previous output
+    output_messages = []
+
+    # a. Retrieve selected task config
+    selected_config_filename = st.session_state.get("manual_task_config_selector")
+    if not selected_config_filename:
+        output_messages.append("❌ Error: No task config selected.")
+        st.session_state.pipeline_output = "\n".join(output_messages)
+        return
+
+    config_path = os.path.join("configs", "tasks", selected_config_filename)
+    if not os.path.exists(config_path):
+        output_messages.append(f"❌ Error: Config file not found at {config_path}")
+        st.session_state.pipeline_output = "\n".join(output_messages)
+        return
+    
+    output_messages.append(f"⚙️ Using task config: {config_path}")
+
+    # b. Retrieve query text
+    query_text = st.session_state.get("manual_query_text_input", "")
+
+    # c. Retrieve selected pipeline steps
+    steps_to_run = []
+    if st.session_state.get('extract_and_chunk_cb', False):
+        steps_to_run.append("extract_and_chunk")
+    if st.session_state.get('embed_chunks_cb', False):
+        steps_to_run.append("embed_chunks")
+    if st.session_state.get('embed_chunks_batch_cb', False):
+        steps_to_run.append("embed_chunks_batch")
+    if st.session_state.get('retrieve_cb', False):
+        steps_to_run.append("retrieve")
+    if st.session_state.get('generate_answer_cb', False):
+        steps_to_run.append("generate_answer")
+
+    if not steps_to_run:
+        output_messages.append("⚠️ No pipeline steps selected.")
+        st.session_state.pipeline_output = "\n".join(output_messages)
+        return
+
+    output_messages.append(f"▶️ Selected steps: {', '.join(steps_to_run)}")
+
+    # d. Perform validation for query
+    requires_query = any(step in steps_to_run for step in ["retrieve", "generate_answer"])
+    if requires_query and not query_text.strip():
+        output_messages.append("❌ Error: Query text is required for 'retrieve' or 'generate_answer' steps.")
+        st.session_state.pipeline_output = "\n".join(output_messages)
+        return
+    
+    # e. Instantiate RAGPipeline
+    try:
+        pipeline = RAGPipeline(config_path=config_path)
+        output_messages.append("✅ RAGPipeline instantiated.")
+    except Exception as e:
+        output_messages.append(f"❌ Error instantiating RAGPipeline: {e}")
+        st.session_state.pipeline_output = "\n".join(output_messages)
+        return
+
+    # f. Add steps to the pipeline instance
+    try:
+        if requires_query:
+            pipeline.get_user_query(query_text) 
+            output_messages.append(f"🗣️ Query set in pipeline: '{query_text}'")
+
+        for step_name in steps_to_run:
+            # Assuming add_step handles dependencies or they are met by prior steps.
+            pipeline.add_step(step_name)
+            output_messages.append(f"➕ Step '{step_name}' added to pipeline.")
+    
+    except Exception as e:
+        output_messages.append(f"❌ Error adding steps to RAGPipeline: {e}")
+        st.session_state.pipeline_output = "\n".join(output_messages)
+        return
+
+    # g. Execute pipeline
+    output_messages.append("🚀 Running pipeline steps...")
+    st.session_state.pipeline_output = "\n".join(output_messages) # Update UI before long run
+
+    old_stdout = sys.stdout
+    redirected_output = StringIO()
+    sys.stdout = redirected_output
+    try:
+        pipeline.run_steps() 
+        
+        pipeline_stdout = redirected_output.getvalue()
+        output_messages.append("✅ Pipeline execution complete.")
+        if pipeline_stdout:
+            output_messages.append("\n--- Pipeline Output ---")
+            output_messages.append(pipeline_stdout)
+        
+        if steps_to_run[-1] == "generate_answer" and hasattr(pipeline, 'last_answer') and pipeline.last_answer:
+            output_messages.append("\n--- Final Answer ---")
+            output_messages.append(str(pipeline.last_answer))
+
+    except Exception as e:
+        output_messages.append(f"❌ Error during pipeline execution: {e}")
+        pipeline_stdout = redirected_output.getvalue()
+        if pipeline_stdout:
+            output_messages.append("\n--- Pipeline Output (before error) ---")
+            output_messages.append(pipeline_stdout)
+    finally:
+        sys.stdout = old_stdout # Restore stdout
+    
+    st.session_state.pipeline_output = "\n".join(output_messages)
 
 # Top-level tab navigation
 tabs = st.tabs(["Tasks 🛠", "Runs & Logs 📊", "Pipeline Actions ⚙️", "Utilities & Tools 🧰"])
@@ -18,18 +207,6 @@ with tabs[0]:
     # 🧩 Feature 1: Load and display available task configs from disk
 
     with st.expander("🔽 Select Task Config", expanded=True):
-        def list_config_files(config_dir: str = "configs/tasks") -> list:
-            """
-            Scan the task_configs directory for .yaml files.
-
-            Args:
-                config_dir (str): Path to the config folder.
-
-            Returns:
-                List[str]: Sorted list of config file names.
-            """
-            return sorted([f.split("/")[-1] for f in glob.glob(f"{config_dir}/*.yaml")])
-
         def load_config(config_path: str) -> str:
             """
             Load the content of a YAML config file.
@@ -169,20 +346,47 @@ with tabs[1]:
 with tabs[2]:
     st.header("Manual Pipeline Execution")
 
-    st.selectbox("Select Task Config:", ["email_test.yaml"])
-    st.text_input("Query Text:", placeholder="Enter a natural language question...")
+    config_list = list_config_files()
+    selected_manual_config = st.selectbox("Select Task Config:", config_list, key="manual_task_config_selector")
+    st.text_input("Query Text:", placeholder="Enter a natural language question...", key="manual_query_text_input")
 
     st.markdown("**Choose Pipeline Steps:**")
-    step_cols = st.columns(3)
-    step_cols[0].checkbox("Extract & Chunk")
-    step_cols[1].checkbox("Embed Chunks")
-    step_cols[2].checkbox("Retrieve Chunks")
-    step_cols[0].checkbox("Generate Answer")
+    # Ensure states are updated based on callback before rendering checkboxes to set disabled states correctly
+    # Calling it here might be redundant if session_state is already consistent due to prior actions or initialization.
+    # handle_pipeline_step_change() # Let's see if this is needed or causes issues. Usually on_change is enough.
 
-    st.button("🚀 Run Selected Steps")
+    col1, col2 = st.columns(2)
 
-    with st.expander("🧠 Output Area"):
-        st.write("(Results will be shown here after execution)")
+    with col1:
+        st.checkbox("Extract & Chunk", key="extract_and_chunk_cb", on_change=handle_pipeline_step_change)
+       
+        # Logic for disabling one embedding choice if the other is selected + retrieve is on
+        # The st.session_state.get is important for initial render before callback has run for these keys
+        disable_embed_batch = st.session_state.get('retrieve_cb', False) and st.session_state.get('embed_chunks_cb', False)
+        st.checkbox("Embed Chunks", key="embed_chunks_cb", on_change=handle_pipeline_step_change, disabled=disable_embed_batch)
+
+        disable_embed_regular = st.session_state.get('retrieve_cb', False) and st.session_state.get('embed_chunks_batch_cb', False)
+        st.checkbox("Embed Chunks Batch", key="embed_chunks_batch_cb", on_change=handle_pipeline_step_change, disabled=disable_embed_regular)
+
+    with col2:
+        # Retrieve cannot be unchecked if Generate Answer is checked
+        disable_retrieve = st.session_state.get('generate_answer_cb', False)
+        st.checkbox("Retrieve Chunks", key="retrieve_cb", on_change=handle_pipeline_step_change, disabled=disable_retrieve)
+       
+        # Generate Answer cannot be checked if Retrieve is not checked
+        disable_generate = not st.session_state.get('retrieve_cb', False) 
+        st.checkbox("Generate Answer", key="generate_answer_cb", on_change=handle_pipeline_step_change, disabled=disable_generate)
+
+    # Re-run callback to ensure state consistency after all checkbox states might have been individually altered by user.
+    # This helps ensure that complex dependencies are correctly enforced after initial rendering and any user interaction.
+    # However, this can also lead to infinite loops if not careful.
+    # A better approach is to ensure the callback handles all logic comprehensively.
+    # For now, relying on the on_change of each checkbox.
+
+    st.button("🚀 Run Selected Steps", on_click=handle_run_pipeline)
+
+    with st.expander("🧠 Output Area", expanded=True): # Keep it expanded
+        st.text_area("Log", value=st.session_state.get("pipeline_output", "(Results will be shown here after execution)"), height=300, disabled=True)
 
 # ----------------------
 # Tab 4: Utilities & Tools
