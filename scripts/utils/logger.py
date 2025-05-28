@@ -50,7 +50,7 @@ class LoggerManager:
     def get_logger(cls, 
                    name: str,
                    log_file: Optional[str] = None,
-                   level: str = "INFO",
+                   level: str = "DEBUG",
                    use_json: bool = False,
                    use_color: bool = True,
                    task_paths: Optional[object] = None,
