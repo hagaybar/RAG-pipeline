@@ -5,6 +5,7 @@ for estimating API call costs, managing a budget, and logging API usage.
 """
 import os
 import logging
+from scripts.utils.logger import LoggerManager
 import tiktoken
 from typing import List, Optional
 from openai import OpenAI
@@ -69,8 +70,7 @@ class APIClient:
     def __init__(self, 
                  api_key: Optional[str] = None, 
                  budget_limit: float = 1.0,
-                 config: Optional[dict] = None,
-                 log_file: str = "api_usage.log"):
+                 config: Optional[dict] = None):
             """
             Initialize the API client with budget control and logging.
 
@@ -89,14 +89,8 @@ class APIClient:
             self.budget_limit = budget_limit
             self.spent = 0.0
 
-            # Set up logging
-            self.logger = logging.getLogger("APIClient")
-            self.logger.setLevel(logging.INFO)
-            file_handler = logging.FileHandler(log_file)
-            formatter = logging.Formatter("%(asctime)s - %(message)s")
-            file_handler.setFormatter(formatter)
-            if not self.logger.handlers:
-                self.logger.addHandler(file_handler)
+            # Set up logging using LoggerManager
+            self.logger = LoggerManager.get_logger("APIClient")
             
             self.logger.info(f"APIClient initialized with budget limit: ${self.budget_limit:.2f}")
  

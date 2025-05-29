@@ -6,10 +6,14 @@ and can save them as a TSV or return a DataFrame. Includes basic email body
 cleaning functionality.
 """
 import os
-import win32com.client as win32
-import pythoncom # Added for COM library management
 import pandas as pd
 from datetime import datetime, timedelta
+try:
+    import win32com.client as win32
+    import pythoncom # Added for COM library management
+    WIN32COM_AVAILABLE = True
+except ImportError:
+    WIN32COM_AVAILABLE = False
 from scripts.utils.logger import LoggerManager
 
 
@@ -49,8 +53,13 @@ class EmailFetcher:
         """
         self.config = config
         self.logger = LoggerManager.get_logger("EmailFetcher")
-        self.account_name = config["outlook"]["account_name"]
-        self.folder_path = config["outlook"]["folder_path"]
+        if WIN32COM_AVAILABLE:
+            self.account_name = config["outlook"]["account_name"]
+            self.folder_path = config["outlook"]["folder_path"]
+        else:
+            self.logger.warning("win32com is not available. Email fetching functionality will be disabled.")
+            self.account_name = "unavailable"
+            self.folder_path = "unavailable"
         self.days = config["outlook"].get("days_to_fetch", 1)
 
         self.output_dir = config.get("paths", {}).get("email_dir", "data/cleaned")
@@ -84,6 +93,9 @@ class EmailFetcher:
             Exception: If the connection to Outlook fails for any reason.
         """
         try:
+            if not WIN32COM_AVAILABLE:
+                self.logger.error("win32com is not available. Cannot connect to Outlook.")
+                raise ConnectionRefusedError("win32com is not available on this system.")
             outlook = win32.Dispatch("Outlook.Application").GetNamespace("MAPI")
             self.logger.info("✅ Connected to Outlook.")
             return outlook
@@ -92,6 +104,10 @@ class EmailFetcher:
             raise
 
     def fetch_emails_from_folder(self, return_dataframe: bool = False, save: bool = True):
+        if not WIN32COM_AVAILABLE:
+            self.logger.error("win32com is not available. Cannot fetch emails.")
+            return pd.DataFrame() if return_dataframe else None
+        
         pythoncom.CoInitializeEx(0)  # Initialize COM for this thread
         try:
             # Existing logic starts here

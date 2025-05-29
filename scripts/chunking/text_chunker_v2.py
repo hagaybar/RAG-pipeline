@@ -12,6 +12,7 @@ import numpy as np
 from transformers import AutoTokenizer, AutoModel
 import torch
 import logging
+from scripts.utils.logger import LoggerManager
 
 class TextChunker:
     """
@@ -77,6 +78,7 @@ class TextChunker:
         self.overlap = overlap
         self.similarity_threshold = similarity_threshold
         self.min_chunk_size = min_chunk_size
+        self.logger = LoggerManager.get_logger("TextChunker")
 
     def _split_sentences(self, text: str) -> List[str]:
         """
@@ -102,7 +104,7 @@ class TextChunker:
             np.ndarray: Array of sentence embeddings.
         """
         if not sentences:
-            logging.debug("No sentences to embed. Skipping embedding.")
+            self.logger.debug("No sentences to embed. Skipping embedding.")
             return np.zeros((0, self.embedding_dim))
         inputs = self.tokenizer(sentences, padding=True, truncation=True, return_tensors="pt")
         with torch.no_grad():
