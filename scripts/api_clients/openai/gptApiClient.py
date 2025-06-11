@@ -291,9 +291,10 @@ class APIClient:
 
 # Run the function
 if __name__ == "__main__":
-    # Replace with your actual API key and budget. 
-    BUDGET_LIMIT = 0.01 # e.g., $1.00 total allowed spending. 
-    client = APIClient()
-    answer = client.send_completion_request("Please list the authors of the first encyclopedia.", model="gpt-4o-mini", max_tokens=125)
-    print(f"API Response: {answer}")
-    print(f"Remaining Budget: ${client.get_available_budget():.2f}")
+    pass
+    # # Replace with your actual API key and budget. 
+    # BUDGET_LIMIT = 0.01 # e.g., $1.00 total allowed spending. 
+    # client = APIClient()
+    # answer = client.send_completion_request("Please list the authors of the first encyclopedia.", model="gpt-4o-mini", max_tokens=125)
+    # print(f"API Response: {answer}")
+    # print(f"Remaining Budget: ${client.get_available_budget():.2f}")
